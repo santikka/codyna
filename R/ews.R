@@ -1,11 +1,7 @@
 #' Detect Early Warning Signals in a Time Series
 #'
 #' @export
-#' @param data \[`ts`, `data.frame`, `numeric()`]\cr Time-series data.
-#' @param ts_col \[`character(1)`]\cr Column name of the time series values
-#'   when data is provided as a `data.frame`.
-#' @param time_col \[`character(1)`]\cr Column name of the time points
-#'   when data is provided as a `data.frame` (otional).
+#' @param data \[`ts`, `numeric()`]\cr Univariate time series data.
 #' @param method \[`character(1)`]\cr Name of the analysis method.
 #'   Either `"rolling"` or `"expanding"` for rolling window and expanding
 #'   window, respectively.
@@ -53,21 +49,23 @@
 #' @param degree See [stats::loess()].
 #' @return An object of class `ews` containing the EWS results as a `tibble`.
 #' @examples
-#' # TODO
-detect_warnings <- function(data, ts_col, time_col, method = "rolling",
+#' set.seed(123)
+#' ts_data <- stats::arima.sim(list(order = c(1, 1, 0), ar = 0.6), n = 200)
+#'
+#' # Rolling window (default)
+#' ews_roll <- detect_warnings(ts_data)
+#'
+#' # Expanding window
+#' ews_exp <- detect_warnings(ts_data, method = "expanding)
+#'
+detect_warnings <- function(data, method = "rolling",
                             metrics = "all", window = 50, burnin = 30,
                             demean = TRUE, detrend = "none",
                             threshold = 2.0, consecutive = 2L,
                             bandwidth, span, degree, ...) {
-  # TODO check columns
-  time <- ifelse_(
-    missing(time_col),
-    seq_len(nrow(data)),
-    data[[time_col]]
-  )
-  data <- as_tsn(data[[ts_col]], time)
-  values <- get_values(data)
-  time <- get_time(data)
+  data <- prepare_timeseries_data(data)
+  values <- data$values
+  time <- data$time
   method <- check_match(method, c("rolling", "expanding"))
   available_metrics <- c("ar1", "sd", "skew", "kurt", "cv", "rr")
   metrics <- metrics %m% available_metrics
@@ -194,7 +192,7 @@ rolling_ews <- function(x, time, metrics, window, demean) {
     orig_time = time,
     cor = kendall_tau,
     method = "rolling",
-    class = c("tsn_ews", "tbl_df", "tbl", "data.frame")
+    class = c("ews", "tbl_df", "tbl", "data.frame")
   )
 }
 
@@ -301,7 +299,7 @@ expanding_ews <- function(x, time, metrics, burnin, demean,
     threshold = threshold,
     classification = classify_ews(long),
     method = "expanding",
-    class = c("tsn_ews", "tbl_df", "tbl", "data.frame")
+    class = c("ews", "tbl_df", "tbl", "data.frame")
   )
 }
 

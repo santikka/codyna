@@ -1,1 +1,223 @@
-# TODO
+#' Discover Sequence Patterns
+#'
+#' Discovering various types of patterns in sequence data.
+#' Provides n-gram extraction, gapped pattern discovery, analysis of repeated
+#' patterns and targeted pattern search.
+#'
+#' @export
+#' @param data \[`data.frame`]\cr Sequence data in wide format
+#'   (rows are sequences, columns are time points).
+#' @param type \[`character(1)`]\cr Type of pattern analysis:
+#'
+#'   * `"ngram"`: Extract contiguous n-grams.
+#'   * `"gapped"`: Discover patterns with gaps/wildcards.
+#'   * `"repeated"`: Detect repeated occurrences of the same state.
+#'
+#' @param pattern \[`character()`]\cr Specific pattern to search for
+#'   (e.g., `"A->*->B"` or `c("A", "*", "B")`).
+#'   If provided, `type` is ignored. Supports wildcards: `*` (single) and
+#'   `**` (multi-wildcard).
+#' @param len \[`integer(2)`]\cr Minimum and maximum pattern length for
+#'   n-grams and repeated patterns (default: `c(1, 5`).
+#' @param gap \[`integer(2)`]\cr Minimum and maximum gap size for
+#'   gapped patterns (default: `c(1, 3)`).
+#' @param min_support \[`integer(1)`]\cr Minimum support threshold, i.e., the
+#'   proportion of sequences that must contain a specific pattern for it to
+#'   be included (default: `0.01`).
+#' @param min_count \[`integer(1)`]\cr Minimum count threshold, i.e., the
+#'   numbers of times a pattern must occur across all sequences for it to
+#'   be included (default: `2`).
+#' @param start \[`character(1)`]\cr Filter patterns starting with these states.
+#' @param end \[`character(1)`]\cr Filter patterns ending with these states.
+#' @param contains \[`character(1)`]\cr Filter patterns containing these states.
+#' @return A `tibble` containing the discover patterns, counts, proportions,
+#'   and support.
+#' @examples TODO
+#'
+discover_patterns <- function(data, type = "ngram", pattern, len = c(1, 5),
+                              gap = c(1, 3), min_support = 0.01, min_count = 2,
+                              start, end, contains) {
+  check_missing(data)
+  data <- prepare_sequence_data(data)
+  n <- nrow(sequences)
+  m <- ncol(sequences)
+  sequences <- data$sequences
+  alphabet <- data$alphabet
+  type <- check_match(type, c("ngram", "gapped", "repeated"))
+  check_range(len, type = "integer", min = 1, max = m)
+  check_range(gap, type = "integer", min = 1, max = m - 2)
+  if (!is.missing(pattern) && length(pattern) > 1) {
+    pattern <- paste(pattern, collapse = "->")
+    patterns <- search_pattern(sequences, pattern)
+  } else {
+    patterns <- switch(type,
+      `ngram` = extract_ngrams(sequences, alphabet, len),
+      `gapped` = extract_gapped(sequences, alphabet, gap),
+      `abstract` = extract_abstract(sequences, alphabet, len)
+    )
+  }
+  process_patterns(patterns) |>
+    filter_patterns(min_support, min_count, start, end, contains)
+}
+
+#' Process discovered patterns
+#'
+#' @noRd
+process_patterns <- function(x) {
+  out <- vector(mode = "list", length = length(x))
+  for (i in seq_along(out)) {
+    pat_mat <- x[[i]]
+    n <- nrow(pat_mat)
+    pat_vec <- c(pat_mat[nzchar(pat_mat)])
+    pat_tab <- table(pat_vec)
+    pat_u <- names(pat_tab)
+    pat_con <- integer(length(pat_u))
+    names(pat_con) <- pat_u
+    for (j in seq_len(n)) {
+      pats <- pat_mat[j, ]
+      pats <- pats[nzchar(pats)]
+      pat_con[pats] <- pat_con[pats] + 1
+    }
+    out[[i]] <- data.frame(
+      pattern = pat_u,
+      count = c(pat_tab),
+      prop = c(pat_tab) / sum(pat_tab),
+      contained_in = pat_con,
+      support = pat_con / n
+    )
+  }
+  out <- dplyr::bind_rows(out) |>
+    dplyr::arrange(dplyr::desc(!!rlang::sym("count"))) |>
+    tibble::as_tibble()
+}
+
+#' Extract n-gram patterns
+#'
+#' @noRd
+extract_ngrams <- function(sequences, alphabet, len) {
+  n <- nrow(sequences)
+  m <- ncol(sequences)
+  k <- length(len)
+  mis <- is.na(sequences)
+  ngrams <- vector(mode = "list", length = k)
+  for (l in seq_len(k)) {
+    j <- len[l]
+    tmp <- matrix("", n, m - j + 1L)
+    for (i in seq_len(m - 1L)) {
+      if (i + j - 1L > m) {
+        next
+      }
+      idx <- i:(i + j - 1L)
+      pattern <- alphabet[sequences[, idx]]
+      dim(pattern) <- c(n, j)
+      pattern_mis <- mis[, idx]
+      valid <- .rowSums(pattern_mis, m = n, n = j) == 0L
+      if (any(valid)) {
+        subseq <- do.call(
+          paste,
+          c(
+            as.data.frame(pattern[valid, , drop = FALSE]),
+            sep = "->"
+          )
+        )
+        tmp[valid, i] <- subseq
+      }
+    }
+    ngrams[[l]] <- tmp
+  }
+  ngrams
+}
+
+#' Extract gapped patterns
+#'
+#' @noRd
+extract_gapped <- function(sequences, alphabet, gap) {
+  n <- nrow(sequences)
+  m <- ncol(sequences)
+  k <- length(gap)
+  mis <- is.na(sequences)
+  gapped <- vector(mode = "list", length = k)
+  for (l in seq_len(k)) {
+    j <- gap[l]
+    tmp <- matrix("", n, m - j)
+    for (i in seq_len(m - j - 1L)) {
+      if (i + j > m) {
+        next
+      }
+      idx <- c(i, i + j + 1L)
+      pattern <- alphabet[sequences[, idx]]
+      dim(pattern) <- c(n, 2L)
+      pattern_mis <- mis[, idx]
+      valid <- .rowSums(pattern_mis, m = n, n = 2L) == 0L
+      if (any(valid)) {
+        subseq <- do.call(
+          paste,
+          c(
+            as.data.frame(pattern[valid, , drop = FALSE]),
+            sep = paste0("->(*", j, ")->")
+          )
+        )
+        tmp[valid, i] <- subseq
+      }
+    }
+    gapped[[l]] <- tmp
+  }
+  gapped
+}
+
+#' Extract repeated patterns
+#'
+#' @noRd
+extract_repeated <- function(sequences, alphabet, len) {
+  n <- nrow(sequences)
+  m <- ncol(sequences)
+  k <- length(len)
+  mis <- is.na(sequences)
+  repeated <- vector(mode = "list", length = k)
+  for (l in seq_len(k)) {
+    j <- len[l]
+    tmp <- matrix("", n, m - j + 1L)
+    for (i in seq_len(m - 1L)) {
+      if (i + j - 1L > m) {
+        next
+      }
+      idx <- i:(i + j - 1L)
+      pattern <- alphabet[sequences[, idx]]
+      dim(pattern) <- c(n, j)
+      pattern_mis <- mis[, idx]
+      valid <- (.rowSums(pattern_mis, m = n, n = j) == 0L) &
+        apply(sequences[, idx], 1, function(x) n_unique(x) == 1L)
+      if (any(valid)) {
+        subseq <- do.call(
+          paste,
+          c(
+            as.data.frame(pattern[valid, , drop = FALSE]),
+            sep = "->"
+          )
+        )
+        tmp[valid, i] <- subseq
+      }
+    }
+    repeated[[l]] <- tmp
+  }
+  repeated
+}
+
+filter_patterns <- function(x, min_support, min_count, start, end, contains) {
+  out <- x |>
+    dplyr::filter(!!rlang::sym("support") >= min_support) |>
+    dplyr::filter(!!rlang::sym("count") >= min_count)
+  if (!missing(start)) {
+    out <- out |>
+      dplyr::filter(startsWith(!!rlang::sym("pattern"), start))
+  }
+  if (!missing(end)) {
+    out <- out |>
+      dplyr::filter(endsWith(!!rlang::sym("pattern"), end))
+  }
+  if (!missing(contains)) {
+    out <- out |>
+      dplyr::filter(grepl(contains, !!rlang::sym("pattern")))
+  }
+  out
+}

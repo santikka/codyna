@@ -1,13 +1,11 @@
 #' Regime Detection for Time Series Data
 #'
-#' Detects regime changes in complexity data using multiple methods including
+#' Detects regime changes in time series data using multiple methods including
 #' cumulative peaks, changepoint detection, variance shifts,
-#' threshold analysis, gradient changes, and entropy analysis. Provides
-#' comprehensive analysis with stability  classification and pattern
-#' recognition.
+#' threshold analysis, gradient changes, and entropy analysis.
 #'
 #' @export
-#' @param data \[`tsn`, `ts`, `data.frame`, `numeric()`]\cr Time-series data
+#' @param data \[`ts`, `numeric()`]\cr Univariate time series data
 #' @param method \[`character(1)`]\cr Detection method.
 #'   The available options are:
 #'
@@ -44,7 +42,7 @@
 #'   the base proportion threshold for identifying cumulative peak regions.
 #'   Adjusted by `sensitivity`. The default is `0.6`.
 #'
-#' @return A `data.frame` containing all original columns from `data`
+#' @return A `tibble` containing the original time series data
 #'   and additional columns with regime information:
 #'
 #'   `change`: Logical indicating regime change points
@@ -59,13 +57,11 @@
 #'     (method-specific interpretation, typically 0-1)
 #'
 #' @examples
-#' comp <- c(
-#'   rnorm(50, 0.3, 0.05), rnorm(50, 0.8, 0.08),
-#'   rnorm(50, 0.5, 0.05), rnorm(50, 0.9, 0.1)
-#' )
+#' set.seed(123)
+#' ts_data <- stats::arima.sim(list(order = c(1, 1, 0), ar = 0.6), n = 200)
 #'
 #' regimes_all <- detect_regimes(
-#'   data = comp,
+#'   data = ts_data,
 #'   method = "all",
 #'   sensitivity = "medium"
 #' )
@@ -73,16 +69,15 @@
 detect_regimes <- function(data, method = "smart", sensitivity = "medium",
                            min_change, window = 10, consolidate = FALSE,
                            similarity = 0.6, peak = 2.0, cumulative = 0.6) {
-  check_missing(data)
-  data <- as.tsn(data)
-  values <- get_values(data)
-  time <- get_time(data)
+  data <- prepare_timeseries_data(data)
+  values <- data$values
+  time <- data$time
   valid_methods <- detection_methods
   method <- check_match(method, valid_methods)
   n <- length(values)
   min_change <- ifelse_(missing(min_change), max(10, floor(n * 0.10)))
   min_change <- max(1, floor(min_change))
-  params <- default_parameters(
+  params <- default_detection_parameters(
     sensitivity,
     window,
     peak,
@@ -93,12 +88,16 @@ detect_regimes <- function(data, method = "smart", sensitivity = "medium",
     what = paste0("detect_", method),
     args = list(values = values, time = time, params = params)
   )
-  regimes <- cbind(data, result)
-  regimes
+  orig <- data.frame(
+    values = values,
+    time = time
+  )
+  regimes <- cbind(orig, result)
+  tibble::as_tibble(regimes)
 }
 
-default_parameters <- function(sensitivity, window, peak,
-                               cumulative, min_change) {
+default_detection_parameters <- function(sensitivity, window, peak,
+                                         cumulative, min_change) {
   params <- list(
     window = max(3, floor(window)),
     peak = peak,
@@ -167,8 +166,14 @@ min_change_constraint <- function(change, min_change) {
 # Detection methods -------------------------------------------------------
 
 detection_methods <- c(
-  "all", "cumulative_peaks", "changepoints",
-  "entropy", "slope", "smart", "threshold", "variance_shift"
+  "all",
+  "cumulative_peaks",
+  "changepoints",
+  "entropy",
+  "slope",
+  "smart",
+  "threshold",
+  "variance_shift"
 )
 
 detect_all <- function(values, time, params) {
@@ -182,7 +187,7 @@ detect_all <- function(values, time, params) {
     }, error = function(e) {
       warning_(
         c(
-          "Method {.val method} failed in {.val all} mode:",
+          "Method {.val {method}} failed in {.val all} mode:",
           `x` = e$message
         )
       )
@@ -195,7 +200,7 @@ detect_all <- function(values, time, params) {
         confidence = rep(0, n)
       )
     })
-    results[[method]] <- res$regime_change
+    results[[method]] <- res
   }
   if (length(results) == 0) {
     warning_("All methods failed in {.val all} mode.")
@@ -208,16 +213,16 @@ detect_all <- function(values, time, params) {
       )
     )
   }
-  vote_matrix <- do.call(cbind, results)
+  changes <- lapply(results, "[[", "change")
+  vote_matrix <- do.call(cbind, changes)
   ensemble_vote_threshold_prop <- 0.3
   vote_prop <- (params$sensitivity == "medium") * 0.3 +
     (params$sensitivity == "high") * 0.15 +
     (params$sensitivity == "low") * 0.5
-
   n_voted <- ncol(vote_matrix)
   vote_sums <- rowSums(vote_matrix, na.rm = TRUE)
-  min_votes <- max(1, floor(ensemble_vote_threshold_prop * num_methods_voted))
-  change <- vote_sums >= min_votes_needed
+  min_votes <- max(1, floor(ensemble_vote_threshold_prop * n_voted))
+  change <- vote_sums >= min_votes
   change <- min_change_constraint(change, params$min_change)
   type <- rep("none", n)
   magnitude <- vote_sums / max(1, n_voted)
@@ -477,8 +482,9 @@ detect_slope <- function(values, time, params) {
     }
     y <- values[w]
     x <- time[w]
-    y <- y[!is.na(y)]
-    x <- x[!is.na(y)]
+    obs <- !is.na(y)
+    y <- y[obs]
+    x <- x[obs]
     if (length(y) >= 3 && length(unique(y)) > 1) {
       fit <- stats::lm(y ~ x)
       if (!is.null(fit) && length(stats::coef(fit)) == 2
@@ -499,13 +505,13 @@ detect_slope <- function(values, time, params) {
   slope_thr <- slope_factor * sd_ref
   for (i in 2L:n) {
     changed <- FALSE
-    if (is.na(slope[i]) || is.na(slope[i-1]) ||
-        is.na(r_squared[i]) || is.na(r_squared[i-1])) {
+    if (is.na(slope[i]) || is.na(slope[i - 1]) ||
+        is.na(r_squared[i]) || is.na(r_squared[i - 1])) {
       next
     }
     if (r_squared[i] > slope_signif && r_squared[i - 1] > slope_signif &&
         sign(slope[i]) != sign(slope[i-1]) &&
-        abs(slope[i]) > slope_thr && abs(slope[i-1]) > slope_thr) {
+        abs(slope[i]) > slope_thr && abs(slope[i - 1]) > slope_thr) {
       changed <- TRUE
     }
     if (abs(slope[i] - slope[i - 1]) > (2 * slope_thr)) {
@@ -542,7 +548,7 @@ detect_slope <- function(values, time, params) {
       confidence[i] <- 0.3 # TODO ?
     }
   }
-  confidence[change & (is.na(confidence) | confidence == 0)] <- 0.3 # TODO?
+  confidence[change & (is.na(confidence) | confidence == 0)] <- 0.3
   list(
     change = change,
     id = 1L + cumsum(change),

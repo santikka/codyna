@@ -5,7 +5,7 @@
 #' complexity, fluctuation, distribution, autocorrelation, and basic statistics.
 #'
 #' @export
-#' @param data \[`ts`, `data.frame`, `numeric()`]\cr Time-series data.
+#' @param data \[`ts`, `numeric()`]\cr Time-series data.
 #' @param measures \[`character()`]\cr A vector of measures to calculate.
 #'   See 'Details' for more information on the available measures.
 #' @param window \[`integer(1)`]\cr A positive `integer` specifying the rolling
@@ -14,7 +14,7 @@
 #'   options are: `"center"` (default), `"right"`, and `"left"`. The calculated
 #'   measure is assigned to the center, rightmost, or leftmost point of the
 #'   window, respectively.
-#' @return A `data.frame` with the time index, the original time-series data,
+#' @return A `tibble` with the time index, the original time-series data,
 #'   and the calculated measures.
 #' @details The following measures can be calculated:
 
@@ -29,18 +29,21 @@
 #' The option `"all"` computes all of the above.
 #'
 #' @examples
-#' # Basic complexity calculation
 #' set.seed(123)
-#' ts_data <- rnorm(100)
-#' result <- complexity(ts_data, measures = "complexity")
+#' ts_data <- stats::arima.sim(list(order = c(1, 1, 0), ar = 0.6), n = 200)
+#'
+#' # Single measure
+#' comp_single <- complexity(ts_data, measures = "complexity")
 #'
 #' # Multiple measures
-#' result_multi <- complexity(ts_data, measures = c("complexity", "variance"))
+#' comp_multi <- complexity(ts_data, measures = c("complexity", "variance"))
 #'
 complexity <- function(data, measures = "complexity", window = 7L,
                        align = "center") {
   check_missing(data)
-  data <- as.tsn(data)
+  data <- prepare_timeseries_data(data)
+  values <- data$values
+  time <- data$time
   # TODO check window
   valid_measures <- c(names(complexity_funs), "complexity")
   measures <- check_match(
@@ -59,7 +62,6 @@ complexity <- function(data, measures = "complexity", window = 7L,
     measures
   )
   align <- check_match(align, c("left", "right", "center"))
-  values <- get_values(data)
   n <- length(values)
   stopifnot_(
     n >= window,
@@ -67,7 +69,10 @@ complexity <- function(data, measures = "complexity", window = 7L,
      ({window})."
   )
   scale <- range(values, na.rm = TRUE)
-  out <- data
+  out <- data.frame(
+    values = values,
+    time = time
+  )
   for (measure in measures) {
     if (measure == "complexity") {
       fluctuation <- out$fluctuation %||% roll(
@@ -95,7 +100,7 @@ complexity <- function(data, measures = "complexity", window = 7L,
       )
     }
   }
-  out
+  tibble::as_tibble(out)
 }
 
 # Complexity methods ------------------------------------------------------

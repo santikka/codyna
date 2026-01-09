@@ -1,4 +1,14 @@
+#' Plot EWS Results
+#'
 #' @export
+#' @param x \[`ews`\]\cr Output of [detect_warnings()].
+#' @return A `ggplot` object.
+#' @examples
+#' set.seed(123)
+#' ts_data <- stats::arima.sim(list(order = c(1, 1, 0), ar = 0.6), n = 200)
+#' ews_roll <- detect_warnings(ts_data)
+#' plot(ews_roll)
+#'
 plot.ews <- function(x, ...) {
   d <- data.frame(
     value = attr(x, "orig_values"),
@@ -184,8 +194,10 @@ plot_expanding_ews <- function(x) {
       labels = c("Detected", "Not Detected"),
       guide = ggplot2::guide_legend(
         order = 1,
-        alpha = c(1, 1),
-        linetype = c("blank", "solid")
+        override.aes = list(
+          alpha = c(1, 1),
+          linetype = c("blank", "solid")
+        )
       )
     ) +
     ggplot2::theme_bw() +
