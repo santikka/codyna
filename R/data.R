@@ -1,4 +1,4 @@
-prepare_sequence_data <- function(x, alphabet, cols) {
+prepare_sequence_data <- function(x, alphabet, cols = names(x)) {
   cols <- which(names(x) %in% cols)
   if (inherits(x, "stslist")) {
     alphabet <- attr(x, "alphabet")
