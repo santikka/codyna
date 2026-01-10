@@ -48,18 +48,9 @@ discover_patterns <- function(data, type = "ngram", pattern, len = 2:5,
   check_range(gap, scalar = FALSE, type = "integer", min = 1, max = m - 2)
   check_range(min_support)
   check_values(min_count)
-  stopifnot_(
-    missing(start) || is.character(start),
-    "Argument {.arg start} must be a character vector."
-  )
-  stopifnot_(
-    missing(end) || is.character(end),
-    "Argument {.arg end} must be a character vector."
-  )
-  stopifnot_(
-    missing(contains) || is.character(contains),
-    "Argument {.arg contains} must be a character vector."
-  )
+  check_string(start)
+  check_string(end)
+  check_string(contains)
   if (!missing(pattern)) {
     check_string(pattern)
     patterns <- search_pattern(sequences, alphabet, pattern)

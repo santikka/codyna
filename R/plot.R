@@ -11,6 +11,8 @@
 #' plot(ews_roll)
 #'
 plot.ews <- function(x, ...) {
+  check_missing(x)
+  check_class(x, "ews")
   d <- data.frame(
     value = attr(x, "orig_values"),
     time = attr(x, "orig_time")

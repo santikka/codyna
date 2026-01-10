@@ -8,8 +8,8 @@ detect_warnings(
   data,
   method = "rolling",
   metrics = "all",
-  window = 50,
-  burnin = 30,
+  window = 0.5,
+  burnin = 0.1,
   demean = TRUE,
   detrend = "none",
   threshold = 2,
@@ -38,11 +38,11 @@ The default is \code{"all"} computing all metrics. The available options are:
 \item \code{"all"}: All of the above.
 }}
 
-\item{window}{[\code{numeric(1)}]\cr A percentage value for the window size of
-the rolling window method.}
+\item{window}{[\code{numeric(1)}]\cr Window size as a proportion of the total
+series length (default \code{0.5}).}
 
-\item{burnin}{[\code{numeric(1)}]\cr The length of the burn-in period of the
-expanding window method.}
+\item{burnin}{[\code{numeric(1)}]\cr Burn-in period as a proportion of the total
+series length (default \code{0.1}).}
 
 \item{demean}{[\code{logical(1)}]\cr Should the time series be demeaned before
 analysis?  If \code{TRUE} (the default), the \code{"ar1"} metric will be based on an

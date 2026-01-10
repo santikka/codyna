@@ -85,7 +85,6 @@ threshold analysis, gradient changes, and entropy analysis.
 \examples{
 set.seed(123)
 ts_data <- stats::arima.sim(list(order = c(1, 1, 0), ar = 0.6), n = 200)
-
 regimes_all <- detect_regimes(
   data = ts_data,
   method = "all",
