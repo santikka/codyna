@@ -13,45 +13,20 @@ knitr::opts_chunk$set(
 )
 ```
 
-# codyna
+# `codyna`: Complex Dynamic Systems
 
 <!-- badges: start -->
-[![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
-[![CRAN status](https://www.r-pkg.org/badges/version/codyna)](https://CRAN.R-project.org/package=codyna)
+[![Codecov test coverage](https://codecov.io/gh/santikka/codyna/graph/badge.svg)](https://app.codecov.io/gh/santikka/codyna)
+[![R-CMD-check](https://github.com/santikka/codyna/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/santikka/codyna/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
-The goal of codyna is to ...
+An R package for the analysis of complex dynamic systems with a focus on the temporal unfolding of patterns, changes, and state transitions in behavioral data. The package supports both time-series and sequence data and provides tools for the analysis and visualization of complexity, pattern identification, trends, regimes, sequence typology as well as early warning signals.
 
 ## Installation
 
-You can install the development version of codyna from [GitHub](https://github.com/) with:
+You can install the development version of `codyna` from [GitHub](https://github.com/) with:
 
 ``` r
 # install.packages("pak")
 pak::pak("santikka/codyna")
 ```
-
-## Example
-
-This is a basic example which shows you how to solve a common problem:
-
-```{r example}
-library(codyna)
-## basic example code
-```
-
-What is special about using `README.Rmd` instead of just `README.md`? You can include R chunks like so:
-
-```{r cars}
-summary(cars)
-```
-
-You'll still need to render `README.Rmd` regularly, to keep `README.md` up-to-date. `devtools::build_readme()` is handy for this.
-
-You can also embed plots, for example:
-
-```{r pressure, echo = FALSE}
-plot(pressure)
-```
-
-In that case, don't forget to commit and push the resulting figure files, so they display on GitHub and CRAN.

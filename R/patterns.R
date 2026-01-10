@@ -71,7 +71,8 @@ discover_patterns <- function(data, type = "ngram", pattern, len = 2:5,
     )
   }
   process_patterns(patterns) |>
-    filter_patterns(min_support, min_count, start, end, contains)
+    filter_patterns(min_support, min_count, start, end, contains) |>
+    pattern_proportions()
 }
 
 #' Process discovered patterns
@@ -80,9 +81,13 @@ discover_patterns <- function(data, type = "ngram", pattern, len = 2:5,
 process_patterns <- function(x) {
   out <- vector(mode = "list", length = length(x))
   for (i in seq_along(out)) {
-    pat_mat <- x[[i]]
+    pat_mat <- x[[i]]$patterns
+    pat_len <- x[[i]]$length
     n <- nrow(pat_mat)
     pat_vec <- c(pat_mat[nzchar(pat_mat)])
+    if (length(pat_vec) == 0) {
+      next
+    }
     pat_tab <- table(pat_vec)
     pat_u <- names(pat_tab)
     pat_con <- integer(length(pat_u))
@@ -90,17 +95,24 @@ process_patterns <- function(x) {
     for (j in seq_len(n)) {
       pats <- pat_mat[j, ]
       pats <- pats[nzchar(pats)]
-      pat_con[pats] <- pat_con[pats] + 1
+      pat_con[pats] <- pat_con[pats] + 1L
     }
     out[[i]] <- data.frame(
       pattern = pat_u,
+      length = pat_len,
       count = c(pat_tab),
-      proportion = c(pat_tab) / sum(pat_tab),
       contained_in = pat_con,
       support = pat_con / n
     )
   }
-  out <- dplyr::bind_rows(out) |>
+  proto <- data.frame(
+    pattern = character(0L),
+    length = integer(0L),
+    count = integer(0L),
+    contained_in = integer(0L),
+    support = numeric(0L)
+  )
+  out <- dplyr::bind_rows(out, proto) |>
     dplyr::arrange(dplyr::desc(!!rlang::sym("count"))) |>
     tibble::as_tibble()
 }
@@ -117,10 +129,7 @@ extract_ngrams <- function(sequences, alphabet, len) {
   for (l in seq_len(k)) {
     j <- len[l]
     tmp <- matrix("", n, m - j + 1L)
-    for (i in seq_len(m - 1L)) {
-      if (i + j - 1L > m) {
-        next
-      }
+    for (i in seq_len(m - j + 1L)) {
       idx <- i:(i + j - 1L)
       pattern <- alphabet[sequences[, idx]]
       dim(pattern) <- c(n, j)
@@ -137,7 +146,7 @@ extract_ngrams <- function(sequences, alphabet, len) {
         tmp[valid, i] <- subseq
       }
     }
-    ngrams[[l]] <- tmp
+    ngrams[[l]] <- list(patterns = tmp, length = j)
   }
   ngrams
 }
@@ -155,9 +164,6 @@ extract_gapped <- function(sequences, alphabet, gap) {
     j <- gap[l]
     tmp <- matrix("", n, m - j)
     for (i in seq_len(m - j - 1L)) {
-      if (i + j > m) {
-        next
-      }
       idx <- c(i, i + j + 1L)
       pattern <- alphabet[sequences[, idx]]
       dim(pattern) <- c(n, 2L)
@@ -168,13 +174,13 @@ extract_gapped <- function(sequences, alphabet, gap) {
           paste,
           c(
             as.data.frame(pattern[valid, , drop = FALSE]),
-            sep = paste0("->(*", j, ")->")
+            sep = paste0("->", paste0(rep("*", j), collapse = ""), "->")
           )
         )
         tmp[valid, i] <- subseq
       }
     }
-    gapped[[l]] <- tmp
+    gapped[[l]] <- list(patterns = tmp, length = j + 2L)
   }
   gapped
 }
@@ -191,10 +197,7 @@ extract_repeated <- function(sequences, alphabet, len) {
   for (l in seq_len(k)) {
     j <- len[l]
     tmp <- matrix("", n, m - j + 1L)
-    for (i in seq_len(m - 1L)) {
-      if (i + j - 1L > m) {
-        next
-      }
+    for (i in seq_len(m - j + 1L)) {
       idx <- i:(i + j - 1L)
       pattern <- alphabet[sequences[, idx]]
       dim(pattern) <- c(n, j)
@@ -212,7 +215,7 @@ extract_repeated <- function(sequences, alphabet, len) {
         tmp[valid, i] <- subseq
       }
     }
-    repeated[[l]] <- tmp
+    repeated[[l]] <- list(patterns = tmp, length = j)
   }
   repeated
 }
@@ -241,7 +244,7 @@ search_pattern <- function(sequences, alphabet, pattern) {
     states <- states[idx_states]
   }
   if (j > m) {
-    return(list())
+    return(list(list(patterns = matrix("", nrow = 0, ncol = j), length = j)))
   }
   discovered <- matrix("", n, m - j + 1L)
   for (i in seq_len(m - j + 1L)) {
@@ -262,9 +265,8 @@ search_pattern <- function(sequences, alphabet, pattern) {
       discovered[valid, i] <- subseq
     }
   }
-  list(discovered)
+  list(list(patterns = discovered, length = j))
 }
-
 
 #' Filter patterns based on various criteria
 #'
@@ -294,4 +296,17 @@ filter_patterns <- function(patterns, min_support, min_count,
       dplyr::filter(grepl(pat, !!rlang::sym("pattern"), perl = TRUE))
   }
   out
+}
+
+pattern_proportions <- function(patterns) {
+  patterns |>
+    dplyr::group_by(!!rlang::sym("length")) |>
+    dplyr::mutate(
+      proportion = !!rlang::sym("count") / sum(!!rlang::sym("count"))
+    ) |>
+    dplyr::relocate(
+      !!rlang::sym("proportion"),
+      .after = !!rlang::sym("count")
+    ) |>
+    dplyr::ungroup()
 }

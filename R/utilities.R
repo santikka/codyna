@@ -103,12 +103,6 @@ rmsqd <- function(x) {
   sqrt(mean(diff(x)^2, na.rm = TRUE))
 }
 
-rescale <- function(x, scale) {
-  x_range <- range(x, na.rm = TRUE, finite = TRUE)
-  (x - x_range[1L]) / (x_range[2L] - x_range[1L]) *
-    (scale[2] - scale[1]) + scale[1L]
-}
-
 # Functions borrowed from the `dynamite` and `tna` packages -------------------
 
 
@@ -236,12 +230,4 @@ stopifnot_ <- function(cond, message, ..., call = rlang::caller_env()) {
 #' @noRd
 message_ <- function(message, ...) {
   cli::cli_inform(message, ..., .envir = parent.frame())
-}
-
-#' Create a Comma-separated Character String
-#'
-#' @param x A `character` vector.
-#' @noRd
-cs <- function(...) {
-  paste0(c(...), collapse = ", ")
 }

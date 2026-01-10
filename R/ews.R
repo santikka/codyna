@@ -16,10 +16,10 @@
 #'   * `"rr"`: Return rate (`1 - ar1`).
 #'   * `"all"`: All of the above.
 #'
-#' @param window \[`numeric(1)`]\cr A percentage value for the window size of
-#'   the rolling window method.
-#' @param burnin \[`numeric(1)`]\cr The length of the burn-in period of the
-#'   expanding window method.
+#' @param window \[`numeric(1)`]\cr Window size as a proportion of the total
+#'   series length (default `0.5`).
+#' @param burnin \[`numeric(1)`]\cr Burn-in period as a proportion of the total
+#'   series length (default `0.1`).
 #' @param demean \[`logical(1)`]\cr Should the time series be demeaned before
 #'   analysis?  If `TRUE` (the default), the `"ar1"` metric will be based on an
 #'   AR1 model where the mean of the observations is first subtracted.
@@ -59,7 +59,7 @@
 #' ews_exp <- detect_warnings(ts_data, method = "expanding")
 #'
 detect_warnings <- function(data, method = "rolling",
-                            metrics = "all", window = 50, burnin = 30,
+                            metrics = "all", window = 0.5, burnin = 0.1,
                             demean = TRUE, detrend = "none",
                             threshold = 2.0, consecutive = 2L,
                             bandwidth, span, degree) {
@@ -75,15 +75,17 @@ detect_warnings <- function(data, method = "rolling",
     several.ok = TRUE
   )
   metrics <- ifelse_("all" %in% metrics, available_metrics, metrics)
-  check_range(window, min = 0.0, max = 100.0)
-  check_range(burnin, min = 0.0, max = 100.0)
+  check_range(window)
+  check_range(burnin)
   check_values(consecutive, strict = TRUE)
   check_flag(demean)
   detrend <- check_match(
     detrend,
     c("none", "gaussian", "loess", "linear", "first-diff")
   )
-  window <- floor(0.01 * window * length(values))
+  n <- length(values)
+  window <- floor(window * n)
+  burnin <- floor(burnin * n)
   bandwidth <- bandwidth %m% round(window / 2)
   span <- span %m% 0.25
   degree <- degree %m% 2

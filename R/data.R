@@ -86,10 +86,24 @@ convert <- function(data, cols, format = "frequency") {
 prepare_sequence_data <- function(x, alphabet, cols) {
   check_missing(x)
   stopifnot_(
-    is.data.frame(x) || is.matrix(x) || inherits(x, "stslist"),
-    "Argument {.arg data} must be a {.cls data.frame}, a {.cls matrix} or
-     an {.cls stslist} object."
+    is.data.frame(x) ||
+      is.matrix(x) ||
+      inherits(x, "stslist") ||
+      inherits(x, "tna"),
+    "Argument {.arg data} must be a {.cls data.frame}, a {.cls matrix},
+     an {.cls stslist} object, or a {.cls tna} object."
   )
+  if (inherits(x, "tna")) {
+    if (!is.null(x$data)) {
+      sequences <- x$data
+      alphabet <- attr(x$data, "alphabet")
+      attr(sequences, "labels") <- NULL
+      attr(sequences, "colors") <- NULL
+      attr(sequences, "alphabet") <- NULL
+      class(sequences) <- "matrix"
+      return(list(sequences = sequences, alphabet = alphabet))
+    }
+  }
   p <- ncol(x)
   cols <- cols %m% seq_len(p)
   cols <- get_cols(rlang::enquo(cols), x)
@@ -104,16 +118,6 @@ prepare_sequence_data <- function(x, alphabet, cols) {
     x[, cols] <- as.data.frame(
       lapply(x[, cols], function(y) factor(y, levels = alphabet))
     )
-  } else if (inherits(x, "tna")) {
-    if (!is.null(x$data)) {
-      sequences <- x$data
-      alphabet <- attr(x$data, "alphabet")
-      attr(sequences, "labels") <- NULL
-      attr(sequences, "colors") <- NULL
-      attr(sequences, "alphabet") <- NULL
-      class(sequences) <- "matrix"
-      return(list(sequences = x$data, alphabet = alphabet))
-    }
   }
   x <- as.matrix(
     as.data.frame(

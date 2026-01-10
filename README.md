@@ -1,2 +1,28 @@
-# codyna
-Complex Dynamic Systems
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+# `codyna`: Complex Dynamic Systems
+
+<!-- badges: start -->
+
+[![Codecov test
+coverage](https://codecov.io/gh/santikka/codyna/graph/badge.svg)](https://app.codecov.io/gh/santikka/codyna)
+[![R-CMD-check](https://github.com/santikka/codyna/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/santikka/codyna/actions/workflows/R-CMD-check.yaml)
+<!-- badges: end -->
+
+An R package for the analysis of complex dynamic systems with a focus on
+the temporal unfolding of patterns, changes, and state transitions in
+behavioral data. The package supports both time-series and sequence data
+and provides tools for the analysis and visualization of complexity,
+pattern identification, trends, regimes, sequence typology as well as
+early warning signals.
+
+## Installation
+
+You can install the development version of `codyna` from
+[GitHub](https://github.com/) with:
+
+``` r
+# install.packages("pak")
+pak::pak("santikka/codyna")
+```
