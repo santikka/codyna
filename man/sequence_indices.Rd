@@ -4,7 +4,7 @@
 \alias{sequence_indices}
 \title{Compute Sequence Indices for Sequence Data}
 \usage{
-sequence_indices(data, cols, favorable, omega = 1, ...)
+sequence_indices(data, cols, favorable, omega = 1)
 }
 \arguments{
 \item{data}{[\code{data.frame}, \code{matrix}, \code{stslist}]\cr
@@ -13,13 +13,11 @@ Sequence data in wide format (rows are sequences, columns are time points).}
 \item{cols}{[\code{expression}]\cr A tidy selection of columns that should
 be considered as sequence data. By default, all columns are used.}
 
-\item{favorable}{A \code{character} vector of state names that should be
+\item{favorable}{[\code{character()}]\cr Names of states that should be
 considered as favorable states.}
 
-\item{omega}{A \code{numeric} value for the omega parameter used to compute
+\item{omega}{[\code{numeric(1)}]\cr Omega parameter value used to compute
 the integrative potential.}
-
-\item{...}{Not used.}
 }
 \value{
 A \code{tibble} containing the index values.
@@ -28,7 +26,6 @@ A \code{tibble} containing the index values.
 Compute Sequence Indices for Sequence Data
 }
 \examples{
-# TODO
-x <- rnorm(1)
+sequence_indices(engagement)
 
 }

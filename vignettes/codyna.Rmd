@@ -1,0 +1,86 @@
+---
+title: "Getting started with the codyna package"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting started with the codyna package}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  fig.align = "center",
+  dev = "jpeg",
+  dpi = 300,
+  out.width = "75%",
+  comment = "#>"
+)
+suppressPackageStartupMessages({
+  library("codyna")
+})
+```
+
+This vignette demonstrates some basic usage of the `codyna` package. First, we load the package.
+```{r, eval = FALSE}
+library("codyna")
+```
+
+We also load the `engagement` data available in the package (see `?engagement` for further information)
+```{r}
+data("engagement", package = "codyna")
+```
+
+## Pattern Discovery
+
+The `codyna` package provides an extensive set of features for discovering patterns in sequence data, such as n-grams, gapped patterns or repeated sequences of the same state using the function `discover_patterns`. The argument `len` can be used to specify the pattern lengths to look for. Similarly, argument `gap` specifies the gap sizes for gapped patterns.
+```{r patterns}
+discover_patterns(engagement, type = "ngram", len = 2:3)
+discover_patterns(engagement, type = "gapped", gap = 1)
+discover_patterns(engagement, type = "repeated", len = 2:3)
+```
+The returned data frames show the length of the pattern, the number of times it occurred across all sequences, its proportion among patterns of the same length, the number sequence that contained the pattern, and the proportion of sequences that contained the pattern (support). The function `discover_patterns` can also be used to look for specific patterns, for example
+```{r custom_pattern}
+discover_patterns(engagement, pattern = "Active->*")
+```
+Here, the wildcard `*` matches any state, i.e., we are looking for patterns that start with the `Active` state and the following state can be any state.
+
+We can also compute various sequence indices
+```{r indices}
+sequence_indices(engagement)
+```
+
+## Early Warning Signals
+
+The `codyna` package provides methods for the detection of early warning signals (EWS). These methods have been adapted from the `EWSmethods` with a focus on high performance. Instead of explicit rolling window calculations, `codyna` implements the measures using update formulas, resulting up to 1000-fold reduction in computation time in some instances. First, we prepare some simple time series data for analysis.
+```{r example_ts}
+set.seed(123)
+ts_data <- stats::arima.sim(list(order = c(1, 1, 0), ar = 0.6), n = 200)
+```
+Both rolling window and expanding window methods are supported.
+```{r ews}
+ews_roll <- detect_warnings(ts_data, method = "rolling")
+ews_exp <- detect_warnings(ts_data, method = "expanding")
+```
+The function `detect_warnings` returns an object of class `ews`, and the results can be easily visualized with the plot method of this class.
+```{r ews_plots, fig.width=6, fig.height=7}
+plot(ews_roll)
+plot(ews_exp)
+```
+
+## Regime Detection
+
+One of the core features of `codyna` is regime detection for time series data. Various methods are included with a user-friendly interface and automated parameter selection based on sensitivity. We continue with the example time series data.
+```{r regimes}
+regimes <- detect_regimes(
+  data = ts_data,
+  method = "threshold",
+  sensitivity = "medium"
+)
+regimes
+```
+The columns `value` and `time` list the original time series values and time points. The column `change` shows when regime changes occur, and the `type` describes the type of regime change (which depends on the applied method). The `id` column provides the regime identifiers. The column `magnitude` quantifies the magnitude of the regime shift, and `confidence` is a method-dependent measure on the likelihood of an actual regime shift. In addition regime stability is described by `stability` along a stability score provided in the `score` column. The resulting object is of class `regimes` which has a customized plot method for visualizing the stability of the regimes along the original time series data.
+```{r regimes_plot, fig.width=8, fig.height=5}
+plot(regimes)
+```

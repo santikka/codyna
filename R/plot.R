@@ -246,3 +246,107 @@ plot_classification <- function(x) {
       legend.position = "bottom"
     )
 }
+
+#' Plot Time Series Data with Detected Regime Stability
+#'
+#' @export
+#' @param x \[`regimes`]\cr Output of [detect_regimes()].
+#' @param points \[`logical(1)`]\cr Should a point be added for each
+#'   observation?  The points are colored by regime stability
+#'   (default: `FALSE`).
+#' @param ... Ignored.
+#' @return A `ggplot` object.
+#' @examples
+#' set.seed(123)
+#' ts_data <- stats::arima.sim(list(order = c(1, 1, 0), ar = 0.6), n = 200)
+#' regimes <- detect_regimes(
+#'   data = ts_data,
+#'   method = "threshold",
+#'   sensitivity = "medium"
+#' )
+#' plot(regimes)
+#'
+plot.regimes <- function(x, points = FALSE, ...) {
+  check_missing(x)
+  check_class(x, "regimes")
+  check_flag(points)
+  states <- factor(base::sort(dplyr::pull(x[, "stability", drop = FALSE], 1L)))
+  data <- x |>
+    dplyr::select(
+      !!rlang::sym("value"),
+      !!rlang::sym("time"),
+      !!rlang::sym("stability")
+    ) |>
+    dplyr::rename(state = !!rlang::sym("stability"))
+  p <- ggplot2::ggplot(
+    data,
+    ggplot2::aes(x = !!rlang::sym("time"), y = !!rlang::sym("value"))
+  )
+  xmin <- rlang::sym(".min")
+  xmax <- rlang::sym(".max")
+  ymin <- rlang::sym(".neginf")
+  ymax <- rlang::sym(".posinf")
+  rects <- data |>
+    dplyr::arrange(!!rlang::sym("time")) |>
+    dplyr::mutate(
+      .grouping_var = cumsum(
+        !!rlang::sym("state") != dplyr::lag(
+          !!rlang::sym("state"),
+          default = dplyr::first(!!rlang::sym("state"))
+        )
+      ),
+      .lag = dplyr::lag(
+        !!rlang::sym("time"),
+        default = dplyr::first(!!rlang::sym("time"))
+      ),
+      .lead = dplyr::lead(
+        !!rlang::sym("time"),
+        default = dplyr::last(!!rlang::sym("time"))
+      )
+    ) |>
+    dplyr::group_by(
+      !!rlang::sym(".grouping_var"), !!rlang::sym("state")
+    ) |>
+    dplyr::summarise(
+      .neginf = -Inf,
+      .posinf = Inf,
+      .min = 0.5 * (min(!!rlang::sym("time")) + min(!!rlang::sym(".lag"))),
+      .max = 0.5 * (max(!!rlang::sym("time")) + max(!!rlang::sym(".lead"))),
+      .groups = "drop"
+    )
+  p <- p + ggplot2::geom_rect(
+    data = rects,
+    ggplot2::aes(
+      xmin = !!xmin,
+      xmax = !!xmax,
+      ymin = !!ymin,
+      ymax = !!ymax,
+      fill = !!rlang::sym("state")
+    ),
+    alpha = 0.5,
+    show.legend = TRUE,
+    inherit.aes = FALSE
+  ) +
+    ggplot2::geom_line(linewidth = .5)
+  if (points) {
+    p <- p + ggplot2::geom_point(
+      ggplot2::aes(fill = !!rlang::sym("state")),
+      show.legend = FALSE,
+      pch = 21
+    )
+  }
+  p +
+    ggplot2::scale_fill_brewer(
+      palette = ifelse(
+        n_unique(states) <= 8,
+        "Accent",
+        "Set3"
+      ),
+      limits = levels(states),
+      name = "State",
+      drop = FALSE
+    ) +
+    ggplot2::theme_minimal() +
+    ggplot2::labs(x = "Time", y = "Value") +
+    ggplot2::theme(legend.position = "bottom")
+}

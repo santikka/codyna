@@ -7,7 +7,7 @@
 complexity(data, measures = "complexity", window = 7L, align = "center")
 }
 \arguments{
-\item{data}{[\code{ts}, \code{numeric()}]\cr Time-series data.}
+\item{data}{[\code{ts}, \code{numeric()}]\cr Univariate time series data.}
 
 \item{measures}{[\code{character()}]\cr A vector of measures to calculate.
 See 'Details' for more information on the available measures.}
@@ -26,8 +26,7 @@ and the calculated measures.
 }
 \description{
 Computes dynamic complexity and other rolling window measures for univariate
-or multivariate time series data. Supports various measures including
-complexity, fluctuation, distribution, autocorrelation, and basic statistics.
+time series data.
 }
 \details{
 The following measures can be calculated:

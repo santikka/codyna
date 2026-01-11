@@ -48,3 +48,10 @@ test_that("EWS results with expanding window can be plotted", {
   plot(ews) |>
     expect_error(NA)
 })
+
+test_that("EWS results can be printed", {
+  ews <- detect_warnings(mock_ts, method = "expanding")
+  print(ews) |>
+    capture.output() |>
+    expect_error(NA)
+})

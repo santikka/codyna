@@ -27,14 +27,8 @@
 #' @param min_change \[`integer(1)`]\cr Minimum number of observations between
 #'   changes. If missing (default), the value is determined automatically
 #'   (typically 10% of observations, minimum of 10).
-#' @param consolidate \[`logical(1)`]\cr Should regimes that are statistically
-#'   similar after initial detection be merged? The default is `FALSE`.
 #' @param window \[`integer(1)`]\cr base window size for rolling calculations.
 #'   This is further adjusted by `sensitivity`. The default is `10`.
-#' @param similarity \[`numeric(1)`]\cr A value between 0 and 1 that defines
-#'   the threshold for considering regimes similar enough to merge if
-#'   `consolidate = TRUE`. Based on normalized mean difference.
-#'   The default is `0.6`.
 #' @param peak \[`numeric(1)`]\cr Base z-score threshold for individual peak
 #'   detection with the `"cumulative_peaks"` method.
 #'   Adjusted by `sensitivity`. The default is `2.0`.
@@ -42,32 +36,33 @@
 #'   the base proportion threshold for identifying cumulative peak regions.
 #'   Adjusted by `sensitivity`. The default is `0.6`.
 #'
-#' @return A `tibble` containing the original time series data
-#'   and additional columns with regime information:
+#' @return An object of class `regimes` which is a `tibble` containing
+#'   the following columns:
 #'
-#'   `change`: Logical indicating regime change points
-#'   `id`: An `integer` regime identifier
-#'   `stability`: Categorical stability: "Stable", "Transitional", "Unstable"
-#'   `complexity_pattern`: Pattern description:
-#'     "Increasing", "Decreasing", "Stable", "Fluctuating"
-#'   `stability_score`: Numeric stability score (0-1)
-#'   `type`: Type of change detected by the method
+#'   `value`: Original time series data.
+#'   `time`: Original time points.
+#'   `change`: A `logical` vector indicating regime changes.
+#'   `id`: An `integer` regime identifier.
+#'   `type`: Type of change detected by the method.
 #'   `magnitude`: Magnitude of the change (method-specific interpretation)
 #'   `confidence`: Confidence in the detection
-#'     (method-specific interpretation, typically 0-1)
+#'     (method-specific interpretation, typically between `0` and `1`, or `NA`)
+#'   `stability`: Categorical stability: `"Stable"`, `"Transitional"`, and
+#'     `"Unstable"`.
+#'   `score`: A `numeric` stability score between `0` and `1`.
 #'
 #' @examples
 #' set.seed(123)
 #' ts_data <- stats::arima.sim(list(order = c(1, 1, 0), ar = 0.6), n = 200)
-#' regimes_all <- detect_regimes(
+#' regimes <- detect_regimes(
 #'   data = ts_data,
-#'   method = "all",
+#'   method = "threshold",
 #'   sensitivity = "medium"
 #' )
 #'
 detect_regimes <- function(data, method = "smart", sensitivity = "medium",
-                           min_change, window = 10, consolidate = FALSE,
-                           similarity = 0.6, peak = 2.0, cumulative = 0.6) {
+                           min_change, window = 10, peak = 2.0,
+                           cumulative = 0.6) {
   data <- prepare_timeseries_data(data)
   values <- data$values
   time <- data$time
@@ -75,8 +70,6 @@ detect_regimes <- function(data, method = "smart", sensitivity = "medium",
   sensitivity <- check_match(sensitivity, c("low", "medium", "high"))
   n <- length(values)
   check_range(window, type = "integer", min = 2L, max = n - 1)
-  check_flag(consolidate)
-  check_range(similarity)
   check_range(cumulative)
   check_values(peak, type = "numeric")
   min_change <- ifelse_(missing(min_change), max(10, floor(n * 0.10)))
@@ -93,11 +86,17 @@ detect_regimes <- function(data, method = "smart", sensitivity = "medium",
     args = list(values = values, time = time, params = params)
   )
   orig <- data.frame(
-    values = values,
+    value = values,
     time = time
   )
   regimes <- cbind(orig, result)
-  tibble::as_tibble(regimes)
+  stb <- regime_stability(regimes, min_change)
+  regimes$stability <- stb$stability
+  regimes$score <- stb$score
+  structure(
+    tibble::as_tibble(regimes),
+    class = c("regimes", "tbl_df", "tbl", "data.frame")
+  )
 }
 
 default_detection_parameters <- function(sensitivity, window, peak,
@@ -165,6 +164,29 @@ min_change_constraint <- function(change, min_change) {
   new_change
 }
 
+regime_stability <- function(regimes, min_change) {
+  n <- nrow(regimes)
+  score <- rep(NA_real_, n)
+  stability <- rep("Unstable", n)
+  u_id <- setdiff(unique(regimes$id), 1)
+  for (id in u_id) {
+    idx <- which(regimes$id == id)
+    len <- length(idx)
+    for (j in seq_len(len)) {
+      k <- idx[j]
+      denom <- max(1, floor(len / 2.0))
+      dist <- min(j - 1, len - j) / denom
+      boundary <- min(1, dist)
+      duration <- min(1, len / max(min_change, 10))
+      score[k] <- (boundary + duration) / 2.0
+    }
+  }
+  stability[score >= 0.35] <- "Transitional"
+  stability[score >= 0.75] <- "Stable"
+  stability[regimes$id == 1] <- "Initial"
+  list(stability = stability, score = score)
+}
+
 # Detection methods -------------------------------------------------------
 
 detection_methods <- c(
@@ -207,7 +229,7 @@ detect_all <- function(values, time, params) {
   )
   list(
     change = change,
-    regime_id = 1L + cumsum(change),
+    id = 1L + cumsum(change),
     type = type,
     magnitude = magnitude,
     confidence = confidence
@@ -491,7 +513,7 @@ detect_slope <- function(values, time, params) {
       confidence[i] <- min(1, max(0, conf_val, na.rm = TRUE), na.rm = TRUE)
     } else {
       type[i] <- "trend_change"
-      confidence[i] <- 0.3 # TODO ?
+      confidence[i] <- 0.3
     }
   }
   confidence[change & (is.na(confidence) | confidence == 0)] <- 0.3
@@ -561,7 +583,6 @@ detect_smart <- function(values, time, params) {
 
 detect_threshold  <- function(values, time, params) {
   n <- length(values)
-  # TODO data amount check
   probs <- c(0, 1/3, 2/3, 1.0)
   q <- unique(stats::quantile(values, probs = probs, na.rm = TRUE))
   nq <- length(q)
@@ -590,7 +611,6 @@ detect_threshold  <- function(values, time, params) {
   changes <- min_change_constraint(change, params$min_change)
   type <- rep("none", n)
   magnitude <- rep(0, n)
-  #confidence <- rep(0.7, n) # TODO why?
   confidence <- rep(NA, n)
   num_levels <- nq - 1
   if (is.na(num_levels) || num_levels <= 0) {
@@ -598,7 +618,7 @@ detect_threshold  <- function(values, time, params) {
   }
   lab <- paste0("Level ", seq_len(num_levels))
   if (num_levels == 3) {
-    lab <- c("Low", "Medium", "High")
+    lab <- c("low", "medium", "high")
   }
   change_idx <- which(change)
   for (i in change_idx) {
@@ -616,7 +636,6 @@ detect_threshold  <- function(values, time, params) {
       magnitude[i] <- 0.5
     }
   }
-  # TODO missing confidence?
   list(
     change = change,
     id = 1L + cumsum(change),
@@ -641,7 +660,7 @@ detect_variance_shift <- function(values, time, params) {
         id = rep(1L, n),
         type = rep("var_insufficient_data", n),
         magnitude = rep(0, n),
-        confidence = rep(0,n)
+        confidence = rep(0, n)
       )
     )
   }

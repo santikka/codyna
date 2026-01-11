@@ -62,7 +62,16 @@ Provides n-gram extraction, gapped pattern discovery, analysis of repeated
 patterns and targeted pattern search.
 }
 \examples{
-# TODO
-x <- rnorm(1)
+# N-grams
+ngrams <- discover_patterns(engagement, type = "ngram")
+
+# Gapped patterns
+gapped <- discover_patterns(engagement, type = "gapped")
+
+# Repeated patterns
+repeated <- discover_patterns(engagement, type = "repeated")
+
+# Custom pattern with a wildcard state
+custom <- discover_patterns(engagement, pattern = "Active->*")
 
 }

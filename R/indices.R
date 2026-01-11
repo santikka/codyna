@@ -5,17 +5,15 @@
 #'   Sequence data in wide format (rows are sequences, columns are time points).
 #' @param cols \[`expression`]\cr A tidy selection of columns that should
 #'   be considered as sequence data. By default, all columns are used.
-#' @param favorable A `character` vector of state names that should be
+#' @param favorable \[`character()`\]\cr Names of states that should be
 #'   considered as favorable states.
-#' @param omega A `numeric` value for the omega parameter used to compute
+#' @param omega \[`numeric(1)`]\cr Omega parameter value used to compute
 #'   the integrative potential.
-#' @param ... Not used.
 #' @return A `tibble` containing the index values.
 #' @examples
-#' # TODO
-#' x <- rnorm(1)
+#' sequence_indices(engagement)
 #'
-sequence_indices <- function(data, cols, favorable, omega = 1, ...) {
+sequence_indices <- function(data, cols, favorable, omega = 1) {
   data <- prepare_sequence_data(data)
   sequence_indices_(data, favorable, omega)
 }

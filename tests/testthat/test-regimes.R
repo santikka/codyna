@@ -33,3 +33,26 @@ test_that("variance shift warns with low data", {
   detect_regimes(mock_ts, method = "all", window = 99) |>
     expect_warning("Not enough data")
 })
+
+test_that("detected regime stability can be plotted", {
+  regimes <- detect_regimes(
+    data = mock_ts,
+    method = "threshold",
+    sensitivity = "medium"
+  )
+  plot(regimes) |>
+    expect_error(NA)
+  plot(regimes, points = TRUE) |>
+    expect_error(NA)
+})
+
+test_that("regime detection result can be printed", {
+  regimes <- detect_regimes(
+    data = mock_ts,
+    method = "threshold",
+    sensitivity = "medium"
+  )
+  print(regimes) |>
+    capture.output() |>
+    expect_error(NA)
+})

@@ -32,8 +32,17 @@
 #' @return A `tibble` containing the discover patterns, counts, proportions,
 #'   and support.
 #' @examples
-#' # TODO
-#' x <- rnorm(1)
+#' # N-grams
+#' ngrams <- discover_patterns(engagement, type = "ngram")
+#'
+#' # Gapped patterns
+#' gapped <- discover_patterns(engagement, type = "gapped")
+#'
+#' # Repeated patterns
+#' repeated <- discover_patterns(engagement, type = "repeated")
+#'
+#' # Custom pattern with a wildcard state
+#' custom <- discover_patterns(engagement, pattern = "Active->*")
 #'
 discover_patterns <- function(data, type = "ngram", pattern, len = 2:5,
                               gap = 1:3, min_support = 0.01, min_count = 2,
@@ -44,13 +53,10 @@ discover_patterns <- function(data, type = "ngram", pattern, len = 2:5,
   alphabet <- data$alphabet
   m <- ncol(sequences)
   type <- check_match(type, c("ngram", "gapped", "repeated"))
-  check_range(len, scalar = FALSE, type = "integer", min = 2, max = m)
-  check_range(gap, scalar = FALSE, type = "integer", min = 1, max = m - 2)
+  check_range(len, scalar = FALSE, type = "integer", min = 2L, max = m)
+  check_range(gap, scalar = FALSE, type = "integer", min = 1L, max = m - 2L)
   check_range(min_support)
   check_values(min_count)
-  check_string(start)
-  check_string(end)
-  check_string(contains)
   if (!missing(pattern)) {
     check_string(pattern)
     patterns <- search_pattern(sequences, alphabet, pattern)

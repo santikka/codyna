@@ -40,6 +40,7 @@ roll <- function(fun, values, time, window, align, ...) {
 }
 
 #' Compute rolling mean
+#'
 #' @param values The data values
 #' @param window Window width.
 #' @param align Window alignment.
@@ -98,13 +99,15 @@ entropy <- function(x, bins) {
   -sum(prob * log2(prob))
 }
 
-# Residual Mean Square Differences
+#' Residual Mean Square Differences
+#'
+#' @param x A `numeric` vector
+#' @noRd
 rmsqd <- function(x) {
   sqrt(mean(diff(x)^2, na.rm = TRUE))
 }
 
-# Functions borrowed from the `dynamite` and `tna` packages -------------------
-
+# Functions borrowed from the `dynamite` and `tna` packages ----
 
 #' Get specific columns from data
 #'

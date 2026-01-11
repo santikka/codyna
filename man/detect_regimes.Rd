@@ -10,8 +10,6 @@ detect_regimes(
   sensitivity = "medium",
   min_change,
   window = 10,
-  consolidate = FALSE,
-  similarity = 0.6,
   peak = 2,
   cumulative = 0.6
 )
@@ -46,14 +44,6 @@ changes. If missing (default), the value is determined automatically
 \item{window}{[\code{integer(1)}]\cr base window size for rolling calculations.
 This is further adjusted by \code{sensitivity}. The default is \code{10}.}
 
-\item{consolidate}{[\code{logical(1)}]\cr Should regimes that are statistically
-similar after initial detection be merged? The default is \code{FALSE}.}
-
-\item{similarity}{[\code{numeric(1)}]\cr A value between 0 and 1 that defines
-the threshold for considering regimes similar enough to merge if
-\code{consolidate = TRUE}. Based on normalized mean difference.
-The default is \code{0.6}.}
-
 \item{peak}{[\code{numeric(1)}]\cr Base z-score threshold for individual peak
 detection with the \code{"cumulative_peaks"} method.
 Adjusted by \code{sensitivity}. The default is \code{2.0}.}
@@ -63,19 +53,20 @@ the base proportion threshold for identifying cumulative peak regions.
 Adjusted by \code{sensitivity}. The default is \code{0.6}.}
 }
 \value{
-A \code{tibble} containing the original time series data
-and additional columns with regime information:
+An object of class \code{regimes} which is a \code{tibble} containing
+the following columns:
 
-\code{change}: Logical indicating regime change points
-\code{id}: An \code{integer} regime identifier
-\code{stability}: Categorical stability: "Stable", "Transitional", "Unstable"
-\code{complexity_pattern}: Pattern description:
-"Increasing", "Decreasing", "Stable", "Fluctuating"
-\code{stability_score}: Numeric stability score (0-1)
-\code{type}: Type of change detected by the method
+\code{value}: Original time series data.
+\code{time}: Original time points.
+\code{change}: A \code{logical} vector indicating regime changes.
+\code{id}: An \code{integer} regime identifier.
+\code{type}: Type of change detected by the method.
 \code{magnitude}: Magnitude of the change (method-specific interpretation)
 \code{confidence}: Confidence in the detection
-(method-specific interpretation, typically 0-1)
+(method-specific interpretation, typically between \code{0} and \code{1}, or \code{NA})
+\code{stability}: Categorical stability: \code{"Stable"}, \code{"Transitional"}, and
+\code{"Unstable"}.
+\code{score}: A \code{numeric} stability score between \code{0} and \code{1}.
 }
 \description{
 Detects regime changes in time series data using multiple methods including
@@ -85,9 +76,9 @@ threshold analysis, gradient changes, and entropy analysis.
 \examples{
 set.seed(123)
 ts_data <- stats::arima.sim(list(order = c(1, 1, 0), ar = 0.6), n = 200)
-regimes_all <- detect_regimes(
+regimes <- detect_regimes(
   data = ts_data,
-  method = "all",
+  method = "threshold",
   sensitivity = "medium"
 )
 

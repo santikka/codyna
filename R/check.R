@@ -94,7 +94,7 @@ check_range <- function(x, type = "numeric", scalar = TRUE,
   test_fun <- ifelse_(
     type == "numeric",
     ifelse_(scalar, checkmate::test_number, checkmate::test_numeric),
-    ifelse_(scalar, checkmate::test_int, checkmate::test_integer)
+    ifelse_(scalar, checkmate::test_int, checkmate::test_integerish)
   )
   stopifnot_(
     test_fun(x = x, lower = min, upper = max),

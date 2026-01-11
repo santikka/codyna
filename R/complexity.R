@@ -1,11 +1,10 @@
 #' Calculate Dynamic Complexity Measures for Time-Series Data
 #'
 #' Computes dynamic complexity and other rolling window measures for univariate
-#' or multivariate time series data. Supports various measures including
-#' complexity, fluctuation, distribution, autocorrelation, and basic statistics.
+#' time series data.
 #'
 #' @export
-#' @param data \[`ts`, `numeric()`]\cr Time-series data.
+#' @param data \[`ts`, `numeric()`]\cr Univariate time series data.
 #' @param measures \[`character()`]\cr A vector of measures to calculate.
 #'   See 'Details' for more information on the available measures.
 #' @param window \[`integer(1)`]\cr A positive `integer` specifying the rolling
