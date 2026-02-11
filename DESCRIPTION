@@ -24,12 +24,14 @@ Imports:
     ggplot2,
     patchwork,
     rlang,
+    scales,
     stats,
     tibble,
     tidyr,
     tidyselect
 Suggests:
     knitr,
+    lme4,
     rmarkdown,
     testthat (>= 3.0.0)
 VignetteBuilder:

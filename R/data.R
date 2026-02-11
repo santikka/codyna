@@ -7,7 +7,7 @@
 #' @param data \[`data.frame`]\cr
 #'   Sequence data in wide format (rows are sequences, columns are time points).
 #'   The input should be coercible to a `data.frame` object.
-#' @param cols \[`expression`: `tidyselect::everything()`]\cr
+#' @param cols \[[`tidy-select`][tidyselect::language]]\cr
 #'   A tidy selection of columns that should be considered as sequence data.
 #'   By default, all columns are used.
 #' @param format \[`character(1)`: `"frequency"`]\cr
@@ -122,7 +122,7 @@ prepare_timeseries_data <- function(x) {
   list(values = values, time = time)
 }
 
-extract_data <- function(x, group = FALSE, meta = FALSE) {
+extract_data <- function(x, meta = FALSE) {
   if (is.matrix(x)) {
     stopifnot_(
       !is.null(colnames(x)),
@@ -152,11 +152,9 @@ extract_data <- function(x, group = FALSE, meta = FALSE) {
     colnames(out) <- colnames(data)
     out <- as.data.frame(out)
     attr(out, "alphabet") <- alphabet
-    if (group) {
-      group <- attr(x, "groups")
-      out$.group <- attr(x, "levels")[unlist(group)]
-      attr(out, "group") <- ".group"
-    }
+    group <- attr(x, "groups")
+    out$.group <- attr(x, "levels")[unlist(group)]
+    attr(out, "group") <- ".group"
     return(out)
   }
   if (inherits(x, "tna_data")) {
@@ -174,10 +172,11 @@ extract_outcome <- function(x, outcome) {
   if (missing(outcome)) {
     return(list(last = FALSE, outcome = NULL, var = NULL))
   }
+  arg <- deparse(substitute(outcome))
   n_out <- length(outcome)
   stopifnot_(
     n_out == nrow(x) || n_out == 1L,
-    "Argument {.arg outcome} must be either {.val last_obs}, a column name of
+    "Argument {.arg {arg}} must be either {.val last_obs}, a column name of
      {.arg data} or a {.cls vector} with the same length as the
      number of rows of {.arg data}."
   )

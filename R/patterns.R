@@ -5,18 +5,16 @@
 #'
 #' Discover various types of patterns in sequence data.
 #' Provides n-gram extraction, gapped pattern discovery, analysis of repeated
-#' patterns and targeted pattern search. supports comparison of pattern
-#' presence between outcomes.
+#' patterns and targeted pattern search. Supports comparison of pattern
+#' presence between groups.
 #'
 #' @export
 #' @inheritParams convert
-#' @param outcome \[`character(1)`, `vector()`]\cr
-#'   Optional outcome variable specification. The option `"last_obs"` assumes
-#'   that the last non-missing observation of each sequence specifies the
-#'   outcome. Alternatively, a column name of `data` or a `vector` with the
-#'   same length as the number of rows of `data`. When provided, the
-#'   presence/absence of each pattern is compared between the outcome groups
-#'   using a goodness-of-fit chi-square test.
+#' @param group \[`character(1)`, `vector()`]\cr
+#'   Optional grouping specification. The option `"last_obs"` assumes that the
+#'   last non-missing observation of each sequence specifies the group.
+#'   Alternatively, a column name of `data` or a `vector` with the same length
+#'   as the number of rows of `data`.
 #' @param type \[`character(1)`: `"ngram"`]\cr
 #'   The pattern type to analyze:
 #'
@@ -57,7 +55,7 @@
 #'   * `lift`: the support divided by the product of the supports of the
 #'     individual states of the pattern. For wildcards, the support is always 1.
 #'
-#' In addition, if `outcome` is provided, additional columns giving the counts
+#' In addition, if `group` is provided, additional columns giving the counts
 #' in each outcome group, the chi-squared test statistic values (`chisq`),
 #' and p-values (`p_value`)  are included.
 #' @examples
@@ -74,22 +72,26 @@
 #' custom <- discover_patterns(engagement, pattern = "Active->*")
 #'
 discover_patterns <- function(data, cols = tidyselect::everything(),
-                              outcome, type = "ngram", pattern,
+                              group, type = "ngram", pattern,
                               len = 2:5, gap = 1:3, min_freq = 2,
                               min_support = 0.01, start, end, contain) {
   check_missing(data)
   data <- extract_data(data)
-  resp <- extract_outcome(data, outcome)
+  group_attr <- attr(data, "group")
+  resp <- extract_outcome(data, group)
   cols <- get_cols(rlang::enquo(cols), data) |>
-    setdiff(resp$var)
-  data <- prepare_sequence_data(data, cols)
+    setdiff(c(group_attr, resp$var))
+  seqdata <- prepare_sequence_data(data, cols)
   if (resp$last) {
-    data <- extract_last(data$sequences, data$alphabet)
-    resp$outcome <- data$group
+    seqdata <- extract_last(seqdata$sequences, seqdata$alphabet)
+    resp$outcome <- seqdata$group
+  }
+  if (!is.null(group_attr)) {
+    resp$outcome <- data[[group_attr]]
   }
   discover_patterns_(
-    sequences = data$sequences,
-    alphabet = data$alphabet,
+    sequences = seqdata$sequences,
+    alphabet = seqdata$alphabet,
     group = resp$outcome,
     type = type,
     pattern = pattern,
@@ -456,7 +458,7 @@ pattern_lift <- function(patterns, support) {
 #' @export
 #' @inheritParams convert
 #' @inheritParams discover_patterns
-#' @param group \[`expression`]\cr
+#' @param group \[[`tidy-select`][tidyselect::language]]\cr
 #'   An optional tidy selection of columns that define the grouping factors.
 #'   If provided, group-specific random effects can be specified via
 #'   `re_formula`. The default value `NULL` disables grouping and a
@@ -520,10 +522,6 @@ analyze_outcome <- function(data, cols = tidyselect::everything(),
     is.logical(desc),
     "Argument {.arg desc} must be a {.cls logical} vector."
   )
-  stopifnot_(
-    !mixed || requireNamespace("lme4", quietly = TRUE),
-    "Please install the {.pkg lme4} package to use random effects."
-  )
   priority <- check_match(
     priority,
     c(
@@ -533,7 +531,7 @@ analyze_outcome <- function(data, cols = tidyselect::everything(),
     several.ok = TRUE
   )
   desc <- rep(desc, length.out = length(priority))
-  data <- extract_data(data, group = TRUE, meta = TRUE)
+  data <- extract_data(data, meta = TRUE)
   resp <- extract_outcome(data, outcome)
   group <- ifelse_(
     is.null(attr(data, "group")),
@@ -548,6 +546,10 @@ analyze_outcome <- function(data, cols = tidyselect::everything(),
   ) |>
     setdiff(c(group, resp$var))
   mixed <- length(group) > 0 && mixed
+  stopifnot_(
+    !mixed || requireNamespace("lme4", quietly = TRUE),
+    "Please install the {.pkg lme4} package to use random effects."
+  )
   seqdata <- prepare_sequence_data(data, cols)
   if (resp$last) {
     seqdata <- extract_last(seqdata$sequences, seqdata$alphabet)
@@ -595,7 +597,9 @@ analyze_outcome <- function(data, cols = tidyselect::everything(),
     end = end,
     contain = contain
   ) |>
-    dplyr::filter(dplyr::if_all(tidyselect::starts_with("count_"), ~ .x > 0)) |>
+    dplyr::filter(
+      dplyr::if_all(tidyselect::starts_with("count_"), ~ .x > 0)
+    ) |>
     dplyr::arrange(!!!arng_exprs) |>
     dplyr::slice_head(n = n) |>
     dplyr::arrange(!!rlang::sym("pattern"))

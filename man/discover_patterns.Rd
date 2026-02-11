@@ -7,7 +7,7 @@
 discover_patterns(
   data,
   cols = tidyselect::everything(),
-  outcome,
+  group,
   type = "ngram",
   pattern,
   len = 2:5,
@@ -24,17 +24,15 @@ discover_patterns(
 Sequence data in wide format (rows are sequences, columns are time points).
 The input should be coercible to a \code{data.frame} object.}
 
-\item{cols}{[\code{expression}: \code{tidyselect::everything()}]\cr
+\item{cols}{[\code{\link[tidyselect:language]{tidy-select}}]\cr
 A tidy selection of columns that should be considered as sequence data.
 By default, all columns are used.}
 
-\item{outcome}{[\code{character(1)}, \code{vector()}]\cr
-Optional outcome variable specification. The option \code{"last_obs"} assumes
-that the last non-missing observation of each sequence specifies the
-outcome. Alternatively, a column name of \code{data} or a \code{vector} with the
-same length as the number of rows of \code{data}. When provided, the
-presence/absence of each pattern is compared between the outcome groups
-using a goodness-of-fit chi-square test.}
+\item{group}{[\code{character(1)}, \code{vector()}]\cr
+Optional grouping specification. The option \code{"last_obs"} assumes that the
+last non-missing observation of each sequence specifies the group.
+Alternatively, a column name of \code{data} or a \code{vector} with the same length
+as the number of rows of \code{data}.}
 
 \item{type}{[\code{character(1)}: \code{"ngram"}]\cr
 The pattern type to analyze:
@@ -87,15 +85,15 @@ the same length.
 individual states of the pattern. For wildcards, the support is always 1.
 }
 
-In addition, if \code{outcome} is provided, additional columns giving the counts
+In addition, if \code{group} is provided, additional columns giving the counts
 in each outcome group, the chi-squared test statistic values (\code{chisq}),
 and p-values (\code{p_value})  are included.
 }
 \description{
 Discover various types of patterns in sequence data.
 Provides n-gram extraction, gapped pattern discovery, analysis of repeated
-patterns and targeted pattern search. supports comparison of pattern
-presence between outcomes.
+patterns and targeted pattern search. Supports comparison of pattern
+presence between groups.
 }
 \examples{
 # N-grams

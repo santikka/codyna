@@ -33,12 +33,12 @@ analyze_outcome(
 Sequence data in wide format (rows are sequences, columns are time points).
 The input should be coercible to a \code{data.frame} object.}
 
-\item{cols}{[\code{expression}: \code{tidyselect::everything()}]\cr
+\item{cols}{[\code{\link[tidyselect:language]{tidy-select}}]\cr
 A tidy selection of columns that should be considered as sequence data.
 By default, all columns are used.}
 
-\item{group}{[\code{expression}]\cr
-An optional tidy selection of columns that  define the grouping factors.
+\item{group}{[\code{\link[tidyselect:language]{tidy-select}}]\cr
+An optional tidy selection of columns that define the grouping factors.
 If provided, group-specific random effects can be specified via
 \code{re_formula}. The default value \code{NULL} disables grouping and a
 fixed-effects model is fitted instead.}
@@ -70,7 +70,8 @@ excluding \code{pattern}.}
 
 \item{desc}{[\code{logical()}, \code{TRUE}]\cr
 A logical vector of the same length as \code{priority} that defines which
-criteria should be evaluated in descending order of magnitude.}
+criteria should be evaluated in descending order of magnitude.
+Automatically recycled if the lengths do not match.}
 
 \item{formula}{[\code{formula}]\cr Formula specification for the fixed effects
 of the non-pattern covariates. The default is \code{~ 1}, adding no covariates.}
@@ -131,7 +132,7 @@ model. The logistic model is fitted using \code{\link[stats:glm]{stats::glm()}} 
 \code{\link[lme4:glmer]{lme4::glmer()}} in the case of a mixed model.
 }
 \examples{
-# TODO
-1 + 1
+fit <- analyze_outcome(engagement, outcome = rep(1:2, each = 500))
+summary(fit)
 
 }

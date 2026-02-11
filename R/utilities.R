@@ -118,7 +118,7 @@ chisq_test <- function(x, count) {
   prob <- rep(1.0 / p, p)
   expected <- outer(count, prob)
   statistic <- .rowSums((x - expected)^2 / expected, m = n, n = p)
-  p_value <- pchisq(statistic, p - 1, lower.tail = FALSE)
+  p_value <- stats::pchisq(statistic, p - 1, lower.tail = FALSE)
   list(statistic = statistic, p_value = p_value)
 }
 
@@ -128,7 +128,7 @@ chisq_test <- function(x, count) {
 #' @param data A `data.frame` to select the columns from.
 #' @noRd
 get_cols <- function(expr, data) {
-  if (rlang::quo_is_null(expr)) {
+  if (rlang::quo_is_null(expr) || rlang::quo_is_missing(expr)) {
     return(NULL)
   }
   if (rlang::quo_is_symbolic(expr) && !rlang::quo_is_call(expr, "!!")) {

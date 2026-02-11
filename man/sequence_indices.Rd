@@ -11,7 +11,7 @@ sequence_indices(data, cols = tidyselect::everything(), favorable, omega = 1)
 Sequence data in wide format (rows are sequences, columns are time points).
 The input should be coercible to a \code{data.frame} object.}
 
-\item{cols}{[\code{expression}: \code{tidyselect::everything()}]\cr
+\item{cols}{[\code{\link[tidyselect:language]{tidy-select}}]\cr
 A tidy selection of columns that should be considered as sequence data.
 By default, all columns are used.}
 

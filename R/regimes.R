@@ -83,7 +83,7 @@ detect_regimes <- function(data, method = "smart", sensitivity = "medium",
     min_change
   )
   result <- do.call(
-    what = getFromNamespace(paste0("detect_", method), "codyna"),
+    what = utils::getFromNamespace(paste0("detect_", method), "codyna"),
     args = list(values = values, time = time, params = params)
   )
   orig <- data.frame(
@@ -208,7 +208,7 @@ detect_all <- function(values, time, params) {
   args <- list(values = values, time = time, params = params)
   for (method in methods) {
     results[[method]] <- do.call(
-      what = getFromNamespace(paste0("detect_", method), "codyna"),
+      what = utils::getFromNamespace(paste0("detect_", method), "codyna"),
       args = args
     )
   }
