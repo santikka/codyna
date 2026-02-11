@@ -13,24 +13,6 @@ check_class <- function(x, what) {
   )
 }
 
-#' Check that columns can be found in the data
-#'
-#' @param cols A `character` vector of column names.
-#' @param data_names Column names of a data frame.
-#' @noRd
-check_cols <- function(cols, data_names) {
-  cols_obs <- cols %in% data_names
-  cols_mis <- cols[!cols_obs]
-  stopifnot_(
-    all(cols_obs),
-    c(
-      "The columns {.val {cols}} must exist in the data.",
-      `x` = "The following columns were
-             not found in the data: {.val {cols_mis}}."
-    )
-  )
-}
-
 #' Check That `x` is a Logical Value
 #'
 #' @param x An \R object expected to be a `logical` value.
@@ -146,5 +128,17 @@ check_values <- function(x, type = "integer", strict = FALSE,
   stopifnot_(
     test_fun(x = x, lower = as.integer(strict)),
     "Argument {.arg {arg}} must be a {strictness} {.cls {type}}{suffix}."
+  )
+}
+
+#' Check if argument is a formula object
+#'
+#' @param x An \R object.
+#' @noRd
+check_formula <- function(x) {
+  arg <- deparse(substitute(x))
+  stopifnot_(
+    inherits(x, "formula"),
+    "Argument {.arg {arg}} must be a {.cls formula} object."
   )
 }

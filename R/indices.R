@@ -1,20 +1,20 @@
 #' Compute Sequence Indices for Sequence Data
 #'
 #' @export
-#' @param data \[`data.frame`, `matrix`, `stslist`]\cr
-#'   Sequence data in wide format (rows are sequences, columns are time points).
-#' @param cols \[`expression`]\cr A tidy selection of columns that should
-#'   be considered as sequence data. By default, all columns are used.
-#' @param favorable \[`character()`\]\cr Names of states that should be
-#'   considered as favorable states.
-#' @param omega \[`numeric(1)`]\cr Omega parameter value used to compute
-#'   the integrative potential.
+#' @inheritParams convert
+#' @param favorable \[`character()`]\cr
+#'   Names of states that should be considered favorable.
+#' @param omega \[`numeric(1)`: `1.0`]\cr
+#'   Omega parameter value used to compute the integrative potential.
 #' @return A `tibble` containing the index values.
 #' @examples
 #' sequence_indices(engagement)
 #'
-sequence_indices <- function(data, cols, favorable, omega = 1) {
-  data <- prepare_sequence_data(data)
+sequence_indices <- function(data, cols = tidyselect::everything(),
+                             favorable, omega = 1.0) {
+  data <- extract_data(data)
+  cols <- get_cols(rlang::enquo(cols), data)
+  data <- prepare_sequence_data(data, cols)
   sequence_indices_(data, favorable, omega)
 }
 

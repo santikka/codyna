@@ -107,16 +107,29 @@ rmsqd <- function(x) {
   sqrt(mean(diff(x)^2, na.rm = TRUE))
 }
 
-# Functions borrowed from the `dynamite` and `tna` packages ----
+#' Vectorized goodness-of-fit chi-squared test
+#'
+#' @param x Matrix of counts.
+#' @param count Count totals.
+#' @noRd
+chisq_test <- function(x, count) {
+  n <- nrow(x)
+  p <- ncol(x)
+  prob <- rep(1.0 / p, p)
+  expected <- outer(count, prob)
+  statistic <- .rowSums((x - expected)^2 / expected, m = n, n = p)
+  p_value <- stats::pchisq(statistic, p - 1, lower.tail = FALSE)
+  list(statistic = statistic, p_value = p_value)
+}
 
 #' Get specific columns from data
 #'
-#' @param expr An `expression` for the columns to select
-#' @param data A `data.frame` to select the columns from
+#' @param expr An `expression` for the columns to select.
+#' @param data A `data.frame` to select the columns from.
 #' @noRd
 get_cols <- function(expr, data) {
-  if (rlang::quo_is_missing(expr)) {
-    return(rlang::missing_arg())
+  if (rlang::quo_is_null(expr) || rlang::quo_is_missing(expr)) {
+    return(NULL)
   }
   if (rlang::quo_is_symbolic(expr) && !rlang::quo_is_call(expr, "!!")) {
     pos <- tidyselect::eval_select(expr = expr, data = data)
@@ -124,17 +137,37 @@ get_cols <- function(expr, data) {
   } else {
     cols <- rlang::eval_tidy(expr = expr)
     if (is.character(cols)) {
-      intersect(cols, names(data))
-    } else if (is.numeric(cols)) {
-      names(data)[cols]
-    } else {
-      stop_(
-        "Columns must be selected using a tidy selection,
-         a {.cls character} vector, or an {.cls integer} vector."
+      cols_mis <- setdiff(cols, names(data))
+      stopifnot_(
+        length(cols_mis) == 0L,
+        c(
+          "Can't select columns that don't exist.",
+          `x` = "Column {.var {cols_mis[1L]}} doesn't exist."
+        )
       )
+      return(cols)
     }
+    if (is.numeric(cols)) {
+      nm <- names(data)
+      k <- length(nm)
+      cols_mis <- setdiff(cols, seq_len(k))
+      stopifnot_(
+        length(cols_mis) == 0L,
+        c(
+          "Can't select columns that don't exist.",
+          `x` = "Attempted to select column {cols_mis[1]} from {k} columns."
+        )
+      )
+      return(nm[cols])
+    }
+    stop_(
+      "Columns must be selected using a tidy selection,
+       a {.cls character} vector, or an {.cls integer} vector."
+    )
   }
 }
+
+# Functions borrowed from the `dynamite` and `tna` packages ----
 
 #' Shorthand for `try(., silent = TRUE)`
 #'

@@ -1,9 +1,10 @@
 Package: codyna
 Title: Complex Dynamic Systems
-Version: 0.1.0
+Version: 0.2.0
 Authors@R: c(
+    person("Mohammed", "Saqr", role = "aut"),
     person("Santtu", "Tikka", email = "santtuth@gmail.com", role = c("aut", "cre")),
-    person("Mohammed", "Saqr", role = "aut")
+    person("Sonsoles", "L\u00f3pez-Pernas", role = "aut")
   )
 Description: Performs analysis of complex dynamic systems with a focus on the
     temporal unfolding of patterns, changes, and state transitions in
@@ -23,12 +24,14 @@ Imports:
     ggplot2,
     patchwork,
     rlang,
+    scales,
     stats,
     tibble,
     tidyr,
     tidyselect
 Suggests:
     knitr,
+    lme4,
     rmarkdown,
     testthat (>= 3.0.0)
 VignetteBuilder:

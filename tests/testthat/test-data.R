@@ -10,9 +10,19 @@ test_that("sequence data can be converted to other formats", {
 })
 
 test_that("tna objects can be converted to sequence data", {
-  prepare_sequence_data(mock_tna) |>
+  cols <- colnames(mock_sequence_num)
+  data <- extract_data(mock_tna) |>
+    prepare_sequence_data(cols) |>
     expect_error(NA)
-  data <- prepare_sequence_data(mock_tna)
   expect_equal(data$sequences, mock_sequence_num, ignore_attr = TRUE)
   expect_equal(data$alphabet, c("A", "B", "C"))
+})
+
+test_that("data extraction fails from a matrix without colnames", {
+  mat <- as.matrix(mock_sequence)
+  dimnames(mat) <- NULL
+  extract_data(mat) |>
+    expect_error(
+      "Argument `data` must have column names when a <matrix> is provided"
+    )
 })

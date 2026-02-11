@@ -4,14 +4,17 @@
 #' such as frequency table, one-Hot encoding, or edge list (graph format).
 #'
 #' @export
-#' @param data \[`data.frame`, `matrix`, `stslist`]\cr
+#' @param data \[`data.frame`]\cr
 #'   Sequence data in wide format (rows are sequences, columns are time points).
-#' @param cols \[`expression`]\cr A tidy selection of columns that should
-#'   be considered as sequence data. By default, all columns are used.
-#' @param format \[`character(1)`]\cr The format to convert into:
+#'   The input should be coercible to a `data.frame` object.
+#' @param cols \[[`tidy-select`][tidyselect::language]]\cr
+#'   A tidy selection of columns that should be considered as sequence data.
+#'   By default, all columns are used.
+#' @param format \[`character(1)`: `"frequency"`]\cr
+#'   The data format to convert into:
 #'
 #'   * `"frequency"`: Counts of each state per sequence.
-#'   * `"onehot"`: Presence/absence (0/1) of each state per sequence.
+#'   * `"onehot"`: Presence/absence (1/0) of each state per sequence.
 #'   * `"edgelist"`: (state, next state) pairs.
 #'   * `"reverse"`: Same as `"edgelist"` but in the reverse direction, i.e.,
 #'     (state, previous state) pairs.
@@ -23,10 +26,15 @@
 #' convert(engagement, format = "edgelist")
 #' convert(engagement, format = "reverse")
 #'
-convert <- function(data, cols, format = "frequency") {
+convert <- function(data, cols = tidyselect::everything(),
+                    format = "frequency") {
   check_missing(data)
+  data <- extract_data(data)
+  cols <- get_cols(rlang::enquo(cols), data)
   data <- prepare_sequence_data(data, cols)
-  format <- check_match(format, c("frequency", "onehot", "edgelist", "reverse"))
+  format <- check_match(
+    format, c("frequency", "onehot", "edgelist", "reverse")
+  )
   alphabet <- data$alphabet
   sequences <- as.data.frame(data$sequences)
   long <- sequences |>
@@ -83,52 +91,21 @@ convert <- function(data, cols, format = "frequency") {
   out
 }
 
-prepare_sequence_data <- function(x, alphabet, cols) {
-  check_missing(x)
-  stopifnot_(
-    is.data.frame(x) ||
-      is.matrix(x) ||
-      inherits(x, "stslist") ||
-      inherits(x, "tna"),
-    "Argument {.arg data} must be a {.cls data.frame}, a {.cls matrix},
-     an {.cls stslist} object, or a {.cls tna} object."
-  )
-  if (inherits(x, "tna")) {
-    if (!is.null(x$data)) {
-      sequences <- x$data
-      alphabet <- attr(x$data, "alphabet")
-      attr(sequences, "labels") <- NULL
-      attr(sequences, "colors") <- NULL
-      attr(sequences, "alphabet") <- NULL
-      class(sequences) <- "matrix"
-      return(list(sequences = sequences, alphabet = alphabet))
-    }
+prepare_sequence_data <- function(x, cols) {
+  alphabet <- attr(x, "alphabet")
+  if (is.null(alphabet)) {
+    vals <- as.character(sort(unique(unlist(x[, cols]))))
+    alphabet <- vals[!is.na(vals) & nchar(vals) > 0]
   }
-  p <- ncol(x)
-  cols <- cols %m% seq_len(p)
-  cols <- get_cols(rlang::enquo(cols), x)
-  if (inherits(x, "stslist")) {
-    alphabet <- attr(x, "alphabet")
-    x <- as.data.frame(x)
-  } else if (is.data.frame(x)) {
-    if (missing(alphabet)) {
-      vals <- sort(unique(unlist(x[, cols])))
-      alphabet <- vals[!is.na(vals) & nchar(vals) > 0]
-    }
-    x[, cols] <- as.data.frame(
-      lapply(x[, cols], function(y) factor(y, levels = alphabet))
-    )
-  }
-  x <- as.matrix(
-    as.data.frame(
-      lapply(
-        x[, cols],
-        function(y) {
-          as.integer(replace(y, which(!y %in% alphabet), NA))
-        }
-      )
-    )
-  )
+  x <- x[, cols] |>
+    lapply(
+      function(y) {
+        y <- factor(y, levels = alphabet)
+        as.integer(replace(y, which(!y %in% alphabet), NA))
+      }
+    ) |>
+    as.data.frame() |>
+    as.matrix()
   list(
     sequences = x,
     alphabet = alphabet
@@ -140,7 +117,100 @@ prepare_timeseries_data <- function(x) {
   time <- seq_along(values)
   if (stats::is.ts(x)) {
     tsp <- attr(x, "tsp")
-    time <- seq(tsp[1], tsp[2], tsp[3])
+    time <- seq(tsp[1L], tsp[2L], tsp[3L])
   }
   list(values = values, time = time)
+}
+
+extract_data <- function(x, meta = FALSE) {
+  if (is.matrix(x)) {
+    stopifnot_(
+      !is.null(colnames(x)),
+      "Argument {.arg data} must have column names when a {.cls matrix} is
+       provided."
+    )
+    return(as.data.frame(x))
+  }
+  if (inherits(x, "tna")) {
+    stopifnot_(
+      !is.null(x$data),
+      "Argument {.arg data} is a {.cls tna} object with no data."
+    )
+    alphabet <- attr(x$data, "alphabet")
+    out <- alphabet[c(x$data)]
+    dim(out) <- dim(x$data)
+    colnames(out) <- colnames(x$data)
+    out <- as.data.frame(out)
+    attr(out, "alphabet") <- attr(x$data, "alphabet")
+    return(out)
+  }
+  if (inherits(x, "group_tna")) {
+    alphabet <- attr(x[[1L]]$data, "alphabet")
+    data <- do.call(base::rbind, lapply(x, "[[", "data"))
+    out <- alphabet[c(data)]
+    dim(out) <- dim(data)
+    colnames(out) <- colnames(data)
+    out <- as.data.frame(out)
+    attr(out, "alphabet") <- alphabet
+    group <- attr(x, "groups")
+    out$.group <- attr(x, "levels")[unlist(group)]
+    attr(out, "group") <- ".group"
+    return(out)
+  }
+  if (inherits(x, "tna_data")) {
+    out <- x$sequence_data
+    attr(out, "cols") <- names(out)
+    if (meta) {
+      out <- cbind(x$meta_data, out)
+    }
+    return(out)
+  }
+  x
+}
+
+extract_outcome <- function(x, outcome) {
+  if (missing(outcome)) {
+    return(list(last = FALSE, outcome = NULL, var = NULL))
+  }
+  arg <- deparse(substitute(outcome))
+  n_out <- length(outcome)
+  stopifnot_(
+    n_out == nrow(x) || n_out == 1L,
+    "Argument {.arg {arg}} must be either {.val last_obs}, a column name of
+     {.arg data} or a {.cls vector} with the same length as the
+     number of rows of {.arg data}."
+  )
+  if (n_out == 1L) {
+    if (outcome == "last_obs") {
+      return(list(last = TRUE, outcome = NULL, var = NULL))
+    }
+    outcome <- as.character(outcome)
+    stopifnot_(
+      outcome %in% names(x),
+      "The column {.val {outcome}} must exist in the data."
+    )
+    return(list(last = FALSE, outcome = x[[outcome]]), var = outcome)
+  }
+  list(last = FALSE, outcome = outcome, var = NULL)
+}
+
+extract_last <- function(x, alphabet) {
+  n <- nrow(x)
+  nas <- is.na(x)
+  last_obs <- max.col(!nas, ties.method = "last")
+  idx <- cbind(seq_len(n), last_obs)
+  last <- x[idx]
+  last_vals <- unique(last)
+  group <- alphabet[last]
+  x[idx] <- NA
+  x[x %in% last_vals] <- NA
+  groups <- unique(group)
+  vals <- seq_along(alphabet)
+  alphabet <- setdiff(alphabet, groups)
+  vals[last_vals] <- NA
+  vals[-last_vals] <- seq_along(alphabet)
+  d <- dim(x)
+  x <- vals[x]
+  dim(x) <- d
+  list(sequences = x, alphabet = alphabet, group = group)
 }

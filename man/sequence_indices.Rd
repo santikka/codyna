@@ -4,20 +4,22 @@
 \alias{sequence_indices}
 \title{Compute Sequence Indices for Sequence Data}
 \usage{
-sequence_indices(data, cols, favorable, omega = 1)
+sequence_indices(data, cols = tidyselect::everything(), favorable, omega = 1)
 }
 \arguments{
-\item{data}{[\code{data.frame}, \code{matrix}, \code{stslist}]\cr
-Sequence data in wide format (rows are sequences, columns are time points).}
+\item{data}{[\code{data.frame}]\cr
+Sequence data in wide format (rows are sequences, columns are time points).
+The input should be coercible to a \code{data.frame} object.}
 
-\item{cols}{[\code{expression}]\cr A tidy selection of columns that should
-be considered as sequence data. By default, all columns are used.}
+\item{cols}{[\code{\link[tidyselect:language]{tidy-select}}]\cr
+A tidy selection of columns that should be considered as sequence data.
+By default, all columns are used.}
 
-\item{favorable}{[\code{character()}]\cr Names of states that should be
-considered as favorable states.}
+\item{favorable}{[\code{character()}]\cr
+Names of states that should be considered favorable.}
 
-\item{omega}{[\code{numeric(1)}]\cr Omega parameter value used to compute
-the integrative potential.}
+\item{omega}{[\code{numeric(1)}: \code{1.0}]\cr
+Omega parameter value used to compute the integrative potential.}
 }
 \value{
 A \code{tibble} containing the index values.
