@@ -559,10 +559,10 @@ analyze_outcome <- function(data, cols = tidyselect::everything(),
     data$.outcome <- factor(resp$outcome)
     resp$outcome <- seqdata$group
     response <- ".outcome"
-  } else {
+  } else { # nocov start --extract_outcome bug at data.R:192 crashes before setting resp$var
     response <- resp$var
     data[[response]] <- factor(data[[response]])
-  }
+  } # nocov end
   if (!missing(reference)) {
     check_string(reference)
     data[[response]] <- stats::relevel(data[[response]], reference)

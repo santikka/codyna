@@ -1,0 +1,108 @@
+---
+title: "Structural Analysis"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Structural Analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  fig.align = "center",
+  dev = "jpeg", dpi = 72,
+  fig.width = 7, fig.height = 4,
+  out.width = "100%",
+  comment = "#>"
+)
+suppressPackageStartupMessages({
+  library("codyna")
+})
+```
+
+## Setup
+
+Structural analysis identifies *where* and *how* a system's statistical properties change over time. Changepoint detection locates abrupt breaks in mean or variance. Potential analysis reconstructs the stability landscape -- how many stable states exist and how deep the barriers between them are. Regime detection classifies each time point by its stability characteristics. Together, these methods reveal the architecture of transitions in a time series.
+
+```{r data}
+set.seed(42)
+
+tip <- generate_tipping_data(
+  n_time = 300, n_vars = 3,
+  tipping_point = 150, model = "ou"
+)
+x <- tip$VAR1
+```
+
+## Changepoint Detection
+
+Changepoint detection partitions a time series into segments where the statistical properties (mean, variance, or both) are approximately constant, and identifies the boundaries between them. This is distinct from trend classification, which classifies the *local direction* at each point -- changepoint detection finds the *structural break locations*. Knowing where breaks occur matters because EWS metrics computed across a break are unreliable: a window straddling a mean shift produces artificially inflated variance and autocorrelation.
+
+`detect_cpts()` uses PELT (Pruned Exact Linear Time) to find the optimal segmentation under a penalised cost criterion. Each segment receives a regime ID (segments with similar means share a regime), a level classification (high/medium/low), and a transition type (initial/change/return).
+
+```{r changepoint}
+cp <- detect_cpts(x, method = "pelt", type = "mean")
+plot(cp, type = "both")
+```
+
+The top panel colours each detected segment; red dashed lines mark changepoint locations. The bottom panel overlays the segment mean step function on the original data.
+
+```{r changepoint-summary}
+summary(cp)
+```
+
+## Potential Analysis
+
+Potential analysis characterises the stability landscape of a time series by estimating the quasi-potential $U(x) = -\log P(x)$ from kernel density estimation. Minima of the potential (wells) represent stable attractors -- states the system tends to return to after perturbation. Maxima (barriers) represent unstable equilibria that separate attractors. A system with one well is monostable; the appearance of a second well signals bistability -- an alternative stable state the system could tip into.
+
+### Global landscape
+
+A single landscape estimated from the entire series reveals the overall structure of the system's state space.
+
+```{r potential-global}
+pa <- potential_analysis(x)
+plot(pa, type = "both")
+```
+
+```{r potential-global-summary}
+summary(pa)
+```
+
+### Rolling landscape
+
+In rolling mode, the landscape is re-estimated at each window position. The number of wells over time reveals *when* alternative stable states appear or disappear -- a direct indicator of approaching bifurcations. A transition from one well to two (or vice versa) is a topological change in the potential landscape.
+
+```{r potential-rolling, fig.height=5}
+pa_roll <- potential_analysis(x, window = 100)
+plot(pa_roll, type = "both")
+```
+
+```{r potential-rolling-summary}
+summary(pa_roll)
+```
+
+Deeper wells indicate more resilient attractors -- more energy is needed to escape them. Wider wells represent larger basins of attraction in state space.
+
+## Regime Detection
+
+Regime detection classifies each time point by its stability characteristics, identifying periods of qualitatively different system behavior. `detect_regimes()` supports multiple detection methods: CUSUM-style changepoints, variance shifts, slope changes, entropy changes, adaptive thresholds, and an ensemble "smart" method that combines slope, peak, and changepoint detectors with weighted consensus voting. Each time point is classified as Stable (within a well-defined regime), Transitional (near a regime boundary), or Unstable (no clear regime assignment).
+
+```{r regimes}
+reg <- detect_regimes(x, method = "smart", sensitivity = "medium")
+plot(reg)
+```
+
+```{r regimes-summary}
+reg |>
+  dplyr::count(stability) |>
+  dplyr::mutate(pct = round(100 * n / sum(n), 1))
+```
+
+## References
+
+- Saqr, M., Dever, D., Lopez-Pernas, S., Gernigon, C., Marchand, G., & Kaplan, A. (2025). Complex dynamic systems in education: Beyond the static, the linear and the causal reductionism. In M. Saqr & S. Lopez-Pernas (Eds.), *Advanced learning analytics methods*. Springer. <https://lamethods.org/book2/chapters/ch12-cds/ch12-cds.html>
+- Saqr, M., Lopez-Pernas, S., & Tikka, S. (2025). Analyzing complex dynamic systems with the R package codyna. *Preprint*.
+- Saqr, M., Lopez-Pernas, S., Tikka, S., & Spitzer, M. W. H. (2026). Early warning signals appear long before dropping out: An idiographic approach grounded in complex dynamic systems theory. *arXiv preprint*, arXiv:2602.00021.
+- Saqr, M., & Lopez-Pernas, S. (2021). The longitudinal trajectories of online engagement over a full program. *Computers & Education*, 175, 104325.
+- Saqr, M., Schreuder, M. J., & Lopez-Pernas, S. (2024). Why educational research needs a complex system revolution that embraces individual differences, heterogeneity, and uncertainty. In M. Saqr & S. Lopez-Pernas (Eds.), *Learning analytics methods and tutorials: A practical guide using R*. Springer. <https://lamethods.org/book1/chapters/ch22-conclusion/ch22-conclusion.html>

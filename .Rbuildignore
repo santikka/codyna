@@ -5,3 +5,9 @@
 ^cran-comments\.md$
 ^codecov\.yml$
 ^\.github$
+^experimental_vignette$
+^tmp$
+^workflow\.Rmd$
+^codyna\.Rcheck$
+^codyna_.*\.tar\.gz$
+^LEARNINGS\.md$

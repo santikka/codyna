@@ -58,3 +58,20 @@
 #' @format A `data.frame` object.
 #'
 "ema"
+
+#' Math Problem-Solving Sequences
+#'
+#' Sequences of student actions during math problem-solving exercises in an
+#' AI-tutoring system. Each row is one problem attempt (up to 10 steps) for
+#' a student. States include student actions (Wrong, Right, Try, Skip, Quit)
+#' and AI support actions (Clue, Correct, Guide, Instruct, Question, Clarify).
+#'
+#' @format A `data.frame` with 5000 rows and 11 columns:
+#' \describe{
+#'   \item{student_id}{Integer student identifier.}
+#'   \item{T1--T10}{Character action states at each step. `NA` when the
+#'     sequence ended before that step.}
+#' }
+#' @source Synthetic data based on AI-tutored math exercises.
+#'
+"math_solving"

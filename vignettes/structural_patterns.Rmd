@@ -1,0 +1,229 @@
+---
+title: "Structural Patterns in Sequences"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Structural Patterns in Sequences}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  fig.align = "center",
+  dev = "jpeg", dpi = 72,
+  fig.width = 7, fig.height = 4,
+  out.width = "100%",
+  comment = "#>"
+)
+suppressPackageStartupMessages({
+  library("codyna")
+})
+```
+
+## Setup
+
+Sequence analysis preserves the temporal ordering of categorical states rather than collapsing them into a single summary. Pattern discovery identifies recurring multi-step sub-sequences; outcome modeling links specific pathways to success or failure; sequence indices quantify structural properties like diversity, stability, and complexity for each individual trajectory (Saqr et al., 2024).
+
+The `math_solving` dataset contains 5,000 math problem-solving sequences from an AI-tutoring system. Each row is one problem attempt with up to 10 steps. States include student actions (Wrong, Right, Try, Skip, Quit) and AI support (Clue, Correct, Guide, Instruct, Question, Clarify).
+
+```{r data}
+data("math_solving")
+str(math_solving[1:5, ])
+```
+
+```{r extract}
+seqs <- math_solving[, paste0("T", 1:10)]
+```
+
+## N-gram Patterns
+
+N-grams are contiguous sub-sequences of length *n*. While TNA captures pairwise transitions (length 2), n-grams of length 3 and above reveal multi-step pathways that bigrams cannot express -- for example, the chain Wrong->Quit->Skip->Instruct->Wrong is a five-step failure loop invisible in any single pairwise transition.
+
+Each pattern is characterised by its **frequency** (total occurrences), **support** (proportion of sequences containing the pattern), **lift** (observed support / expected support under independence -- above 1 means over-represented), and **proportion** (share of total frequency at its length).
+
+```{r ngrams}
+ngrams <- discover_patterns(seqs, type = "ngram", len = 3:5)
+knitr::kable(
+  head(as.data.frame(ngrams), 10),
+  digits = 3,
+  caption = "Top 10 n-grams (lengths 3--5)"
+)
+```
+
+```{r ngrams-plot}
+plot(ngrams, n = 10)
+```
+
+### Targeted search
+
+Test whether a theoretically predicted pathway exists. The wildcard `*` matches any single state.
+
+```{r targeted}
+recovery <- discover_patterns(seqs, pattern = "Wrong->*->Correct")
+knitr::kable(
+  as.data.frame(recovery),
+  digits = 3,
+  caption = "Recovery pathways: Wrong through one step to Correct"
+)
+```
+
+### Starting from a state
+
+The `start` parameter isolates pathways originating from a given state, revealing what typically follows.
+
+```{r start-wrong}
+from_wrong <- discover_patterns(seqs, type = "ngram", len = 3:4, start = "Wrong")
+knitr::kable(
+  head(as.data.frame(from_wrong), 8),
+  digits = 3,
+  caption = "N-grams starting with Wrong"
+)
+```
+
+## Gapped Patterns
+
+Gapped patterns allow wildcards (`*`) between anchoring states, capturing regularities that persist regardless of intervening steps. Each `*` matches exactly one state. For example, Wrong->\*->\*->\*->Right matches any five-step sub-sequence from Wrong to Right. This is useful when the key relationship is between distant states rather than consecutive ones.
+
+```{r gapped}
+gapped <- discover_patterns(seqs, type = "gapped")
+knitr::kable(
+  head(as.data.frame(gapped), 10),
+  digits = 3,
+  caption = "Top 10 gapped patterns"
+)
+```
+
+## Repeated Patterns
+
+Repeated patterns detect consecutive runs of the same state -- instructional loops, hint-seeking chains, or persistent errors. A high TNA self-loop probability tells you the *aggregate* tendency; repeated patterns tell you *which sequences* contain runs of a given length and how common they are.
+
+```{r repeated}
+repeated <- discover_patterns(seqs, type = "repeated", len = 2:4)
+knitr::kable(
+  as.data.frame(repeated),
+  digits = 3,
+  caption = "Repeated patterns (same-state runs)"
+)
+```
+
+## Predicting Outcomes from Patterns
+
+`analyze_outcome()` bridges pattern discovery and statistical modeling. It selects the top patterns (ranked by chi-squared, lift, or support), encodes them as predictors (binary 0/1 or within-sequence count), and fits a logistic regression via `glm()` or a mixed-effects model via `lme4::glmer()`. The returned object is a standard model, so `summary()`, `coef()`, `AIC()`, and `predict()` all work.
+
+### Binary predictors
+
+Each pattern becomes a 0/1 predictor indicating presence or absence. `reference = "Wrong"` means positive coefficients increase the odds of Right (success). Odds ratios (exp(coefficient)) give the multiplicative effect: OR = 3 means "3x the odds of success"; OR = 0.5 means "half the odds."
+
+```{r model-binary}
+model_binary <- analyze_outcome(
+  seqs,
+  outcome = "last_obs",
+  reference = "Wrong",
+  n = 5,
+  freq = FALSE,
+  priority = "chisq",
+  type = "ngram",
+  len = 1:2,
+  mixed = FALSE
+)
+summary(model_binary)
+```
+
+```{r odds-ratios}
+odds_ratios <- exp(coef(model_binary))
+knitr::kable(
+  data.frame(
+    Pattern = names(odds_ratios),
+    `Log-Odds` = round(coef(model_binary), 3),
+    `Odds Ratio` = round(odds_ratios, 3),
+    row.names = NULL, check.names = FALSE
+  ),
+  caption = "Coefficients as log-odds and odds ratios"
+)
+```
+
+### Frequency-based predictors
+
+Setting `freq = TRUE` uses within-sequence pattern counts instead of 0/1, allowing the model to capture dose-response effects -- each additional occurrence of a pattern may increase or decrease the odds.
+
+```{r model-freq}
+model_freq <- analyze_outcome(
+  seqs,
+  outcome = "last_obs",
+  reference = "Wrong",
+  n = 10,
+  freq = TRUE,
+  priority = "chisq",
+  type = "ngram",
+  len = 1:2,
+  mixed = FALSE
+)
+summary(model_freq)
+```
+
+### Mixed-effects model
+
+When observations are not independent (the same student solves multiple problems, or students are nested within classrooms), a mixed-effects model adds a random intercept per group to account for group-level baselines. Standard logistic regression would inflate the effective sample size and produce artificially small standard errors.
+
+```{r model-mixed}
+model_mixed <- analyze_outcome(
+  math_solving, cols = T1:T10,
+  group = student_id,
+  outcome = "last_obs",
+  reference = "Wrong",
+  n = 5,
+  freq = FALSE,
+  priority = "chisq",
+  type = "ngram",
+  len = 1:2,
+  mixed = TRUE
+)
+summary(model_mixed)
+```
+
+```{r model-comparison}
+cat("AIC (fixed):", round(AIC(model_binary), 1), "\n")
+cat("AIC (frequency):", round(AIC(model_freq), 1), "\n")
+cat("AIC (mixed):", round(AIC(model_mixed), 1), "\n")
+```
+
+## Sequence Indices
+
+Sequence indices characterise *how* each trajectory unfolds -- its diversity, stability, dynamism, and complexity -- without reference to any specific pattern. The 24 indices group into families:
+
+- **Coverage** (`valid_n`, `valid_proportion`): How complete is the sequence?
+- **Diversity** (`unique_states`, `longitudinal_entropy`, `simpson_diversity`): How spread is time across states? Entropy is maximised when all states are equally visited; Simpson diversity gives less weight to rare states.
+- **Stability** (`self_loop_tendency`, `mean_spell_duration`, `max_spell_duration`): How persistent are state episodes? Self-loop tendency is the proportion of consecutive pairs where the state does not change.
+- **Dynamism** (`transition_rate`, `transition_complexity`): How frequent and diverse are transitions? Transition complexity distinguishes toggling between two states (low) from cycling through many (high).
+- **Initial conditions** (`initial_state_persistence`, `initial_state_proportion`, `initial_state_influence_decay`): How influential is the starting state? The decay rate captures how quickly the first state's autocorrelation fades.
+- **Cyclicity** (`cyclic_feedback_strength`): Tendency to revisit previously visited states.
+- **Dominance** (`dominant_state`, `dominant_proportion`, `dominant_max_spell`): Which state dominates and by how much?
+- **Emergence** (`emergent_state`, `emergent_state_persistence`, `emergent_state_proportion`): Does a new dominant state appear in the second half? When different from the first-half dominant, a phase transition occurred.
+- **Integrative** (`integrative_potential`, `complexity_index`): Convergence toward a favorable state and overall trajectory complexity.
+
+```{r indices}
+indices <- sequence_indices(seqs)
+numeric_idx <- indices[, vapply(indices, is.numeric, logical(1))]
+summary_df <- data.frame(
+  Index = names(numeric_idx),
+  Min = round(vapply(numeric_idx, min, numeric(1), na.rm = TRUE), 3),
+  Median = round(vapply(numeric_idx, stats::median, numeric(1), na.rm = TRUE), 3),
+  Mean = round(vapply(numeric_idx, mean, numeric(1), na.rm = TRUE), 3),
+  Max = round(vapply(numeric_idx, max, numeric(1), na.rm = TRUE), 3),
+  row.names = NULL
+)
+knitr::kable(summary_df, caption = "Summary statistics for sequence indices")
+```
+
+## References
+
+- Lopez-Pernas, S., Saqr, M., Helske, S., & Murphy, K. (2024). Multi-channel sequence analysis in educational research: An introduction and tutorial with R. In M. Saqr & S. Lopez-Pernas (Eds.), *Learning analytics methods and tutorials: A practical guide using R* (pp. 363--400). Springer. <https://lamethods.org/book1/chapters/ch13-multichannel/ch13-multi.html>
+- Lopez-Pernas, S., Tikka, S., & Saqr, M. (2025). Mining patterns and clusters with transition network analysis: A heterogeneity approach. In M. Saqr & S. Lopez-Pernas (Eds.), *Advanced learning analytics methods*. Springer. <https://lamethods.org/book2/chapters/ch17-tna-clusters/ch17-tna-clusters.html>
+- Saqr, M., Dever, D., Lopez-Pernas, S., Gernigon, C., Marchand, G., & Kaplan, A. (2025). Complex dynamic systems in education: Beyond the static, the linear and the causal reductionism. In M. Saqr & S. Lopez-Pernas (Eds.), *Advanced learning analytics methods*. Springer. <https://lamethods.org/book2/chapters/ch12-cds/ch12-cds.html>
+- Saqr, M., Lopez-Pernas, S., & Tikka, S. (2025). Analyzing complex dynamic systems with the R package codyna. *Preprint*.
+- Saqr, M., Lopez-Pernas, S., Tikka, S., & Spitzer, M. W. H. (2026). Early warning signals appear long before dropping out: An idiographic approach grounded in complex dynamic systems theory. *arXiv preprint*, arXiv:2602.00021.
+- Saqr, M., & Lopez-Pernas, S. (2021). The longitudinal trajectories of online engagement over a full program. *Computers & Education*, 175, 104325.
+- Saqr, M., Lopez-Pernas, S., Helske, S., Durand, M., Murphy, K., Studer, M., & Ritschard, G. (2024). Sequence analysis in education: Principles, technique, and tutorial with R. In M. Saqr & S. Lopez-Pernas (Eds.), *Learning analytics methods and tutorials: A practical guide using R* (pp. 267--298). Springer. <https://lamethods.org/book1/chapters/ch10-sequence-analysis/ch10-seq.html>
+- Saqr, M., Schreuder, M. J., & Lopez-Pernas, S. (2024). Why educational research needs a complex system revolution that embraces individual differences, heterogeneity, and uncertainty. In M. Saqr & S. Lopez-Pernas (Eds.), *Learning analytics methods and tutorials: A practical guide using R*. Springer. <https://lamethods.org/book1/chapters/ch22-conclusion/ch22-conclusion.html>
+- Tikka, S., Lopez-Pernas, S., & Saqr, M. (2025). tna: An R package for Transition Network Analysis. *Applied Psychological Measurement*.

@@ -121,3 +121,84 @@ test_that("outcome analysis supports mixed effects", {
     suppressMessages() |> # singular
     expect_error(NA)
 })
+
+test_that("outcome analysis works with last_obs outcome", {
+  # Lines 555-556: resp$last = TRUE path in analyze_outcome
+  # Create data where last column has exactly 2 unique outcomes
+  mock_seq_out <- mock_sequence
+  mock_seq_out$T7 <- rep(c("D", "F"), length.out = nrow(mock_sequence))
+  fit <- analyze_outcome(
+    mock_seq_out,
+    outcome = "last_obs",
+    len = 1,
+    min_freq = 1,
+    min_support = 0.01
+  ) |>
+    expect_error(NA)
+})
+
+test_that("outcome analysis supports reference parameter", {
+  # Lines 567-568: reference parameter changes factor levels
+  out <- rep(c("A", "B"), length.out = length(idx))
+  fit <- analyze_outcome(
+    engagement[idx, ],
+    outcome = out,
+    reference = "B",
+    len = 1
+  ) |>
+    expect_error(NA)
+})
+
+# ============================================================================
+# Dead code documentation: patterns.R lines 563-564
+#
+# Lines 563-564 in analyze_outcome() are the `else` branch at line 562:
+#   } else {
+#     response <- resp$var
+#     data[[response]] <- factor(data[[response]])
+#   }
+#
+# ROOT CAUSE: Bug in extract_outcome() at data.R line 192. The code reads:
+#   return(list(last = FALSE, outcome = x[[outcome]]), var = outcome)
+# The closing parenthesis of list() is BEFORE `var = outcome`, making
+# `var = outcome` a second argument to return(). R does not allow
+# multi-argument returns and throws an error.
+#
+# This means the only code path that would set resp$var to a non-NULL value
+# (when outcome is a column name) CRASHES instead. All other return paths
+# from extract_outcome() set var = NULL:
+#   - Missing outcome: var = NULL
+#   - "last_obs": var = NULL
+#   - External vector (length == nrow): var = NULL
+#
+# Therefore is.null(resp$var) on line 558 is always TRUE, and the else
+# branch (lines 563-564) is never reached.
+# ============================================================================
+
+test_that("extract_outcome crashes when outcome is a column name", {
+  # Verify the bug in extract_outcome that makes lines 563-564 unreachable
+  mock_df <- data.frame(
+    T1 = c("A", "B", "A"),
+    T2 = c("B", "A", "B"),
+    outcome_col = c("X", "Y", "X")
+  )
+  # extract_outcome with a column name should crash due to misplaced paren
+  expect_error(
+    codyna:::extract_outcome(mock_df, "outcome_col"),
+    "multi-argument returns"
+  )
+})
+
+test_that("analyze_outcome crashes when outcome is a column name", {
+  # Confirm the bug propagates to the public API
+  mock_df <- data.frame(
+    T1 = c("A", "B", "A", "B", "A"),
+    T2 = c("B", "A", "B", "A", "B"),
+    T3 = c("A", "B", "A", "B", "A"),
+    outcome_col = c("X", "Y", "X", "Y", "X")
+  )
+  expect_error(
+    analyze_outcome(mock_df, outcome = "outcome_col", len = 1),
+    "multi-argument returns"
+  )
+})

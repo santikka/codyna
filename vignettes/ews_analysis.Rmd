@@ -1,0 +1,230 @@
+---
+title: "Early Warning Signal Analysis"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Early Warning Signal Analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  fig.align = "center",
+  dev = "jpeg", dpi = 72,
+  fig.width = 7, fig.height = 4,
+  out.width = "100%",
+  comment = "#>"
+)
+suppressPackageStartupMessages({
+  library("codyna")
+})
+```
+
+## Setup
+
+Early warning signals (EWS) are statistical indicators that a complex system is approaching a critical transition -- a tipping point beyond which its behavior changes qualitatively. The theory originates from bifurcation analysis in dynamical systems: as a system loses stability, it recovers more slowly from perturbations, a phenomenon called *critical slowing down*. This manifests as rising autocorrelation (the system "remembers" perturbations longer), increasing variance (fluctuations grow), and spectral reddening (power shifts to low frequencies). Detecting these signatures *before* the transition occurs is the goal of EWS analysis.
+
+We generate a 5-variable tipping-point dataset using the Ornstein--Uhlenbeck model. Before t=150 the system is strongly mean-reverting; after, the restoring force decays toward zero and noise amplifies -- producing the hallmark signatures of critical slowing down.
+
+```{r data}
+set.seed(42)
+
+tip <- generate_tipping_data(
+  n_time = 300, n_vars = 5,
+  tipping_point = 150, model = "ou"
+)
+x <- tip$VAR1
+```
+
+## Multivariate EWS
+
+When a system has multiple interacting components, coordinated changes across variables -- rising cross-correlation, synchronized slowing down, shared variance growth -- are stronger predictors of transitions than any single-variable signal. `detect_multivariate_warnings()` computes metrics through three lenses: summary statistics (mean/max SD and AR(1)), dimension-reduction indicators (MAF and PCA), and covariance-structure metrics.
+
+### Expanding window
+
+The expanding window grows from the start of the series, z-scoring each metric incrementally. Warnings fire when the standardized strength exceeds a threshold. The system state is classified by how many metrics are simultaneously in warning: Stable, Vulnerable, Warning, Critical, or Failing.
+
+```{r mews-expanding, fig.height=6}
+multi_exp <- detect_multivariate_warnings(
+  data    = tip,
+  method  = "expanding",
+  window  = 50,
+  metrics = "all"
+)
+plot(multi_exp)
+```
+
+```{r mews-expanding-summary}
+summary(multi_exp)
+```
+
+### Rolling window
+
+The rolling window provides a fixed-length view of how each metric trends over time. Kendall's tau measures the monotonic trend strength per metric.
+
+```{r mews-rolling, fig.height=6}
+multi_roll <- detect_multivariate_warnings(
+  data    = tip,
+  method  = "rolling",
+  window  = 50,
+  metrics = "all"
+)
+plot(multi_roll)
+```
+
+```{r mews-rolling-summary}
+summary(multi_roll)
+```
+
+## Univariate EWS
+
+`detect_warnings()` computes rolling EWS metrics on a single variable: AR(1) (autocorrelation -- how strongly the current value predicts the next), SD (standard deviation -- amplitude of fluctuations), skewness (asymmetry of the distribution), kurtosis (tail heaviness), CV (coefficient of variation), and return rate (1 - AR(1), how quickly the system reverts to its mean). Kendall's tau summarises the trend strength per metric.
+
+### Rolling window
+
+```{r uews-rolling, fig.height=5}
+uews_roll <- detect_warnings(x, method = "rolling", window = 0.25)
+plot(uews_roll)
+```
+
+### Expanding window
+
+```{r uews-expanding, fig.height=5}
+uews_exp <- detect_warnings(x, method = "expanding")
+plot(uews_exp)
+```
+
+### Spectral EWS
+
+Near a critical transition, power shifts from high to low frequencies -- the spectral exponent increases as the system "reddens." This spectral reddening captures critical slowing down through the frequency domain, complementing the time-domain indicators above. `spectral_ews()` fits a log-log regression of power vs. frequency at each window position and classifies each time point into a noise-colour state: white (random), pink (1/f), red (Brownian-like), or brownian.
+
+```{r spectral, fig.height=5}
+sp <- spectral_ews(x, window = 50, states = TRUE)
+plot(sp)
+```
+
+```{r spectral-summary}
+summary(sp)
+```
+
+### Trend Classification
+
+`compute_trend()` classifies each time point as ascending, descending, flat, or turbulent based on local slope and the volatility of the trend metric within a rolling window. The turbulence classification captures noisy, directionless fluctuations -- a series can be steeply rising without being turbulent (stable trend), or nearly flat yet turbulent (directionless noise).
+
+To demonstrate all four states clearly, we use `generate_ts_data()` which produces a series with labelled phases -- stable plateaus, shocks, recovery ramps, and turbulent drift.
+
+```{r trend-data}
+gen <- generate_ts_data(
+  n_individuals   = 1,
+  data_length     = 500,
+  data_type       = "resilience",
+  n_stable_levels = 2,
+  seed            = 42,
+  generate_plot   = TRUE
+)
+ts_data <- gen$data
+gen$plot
+```
+
+```{r trend}
+tr <- compute_trend(ts_data$value, window = 60, slope_method = "robust",
+                    turbulence_threshold = 10)
+plot(tr)
+```
+
+```{r trend-ribbon}
+plot(tr, type = "ribbons")
+```
+
+```{r trend-summary}
+summary(tr)
+```
+
+### Resilience Metrics
+
+Resilience describes a system's capacity to absorb perturbations and maintain its function. `resilience()` computes eight rolling-window indicators that capture different dimensions of stability: VSI (variance of variances -- consistency of spread), ARCH-LM (volatility clustering), CV (coefficient of variation), DFA alpha (long-range memory via detrended fluctuation analysis), AC ratio (lag-1 autocorrelation relative to higher lags), sample entropy (signal regularity), and recovery time/slope (how quickly the system returns to baseline after shocks).
+
+`classify_resilience()` normalises each metric directionally (high VSI is bad; high recovery slope is good) and produces a weighted composite score on a 0--1 scale, mapped to six categories: Excellent, Solid, Fair, Vulnerable, Failing, and Troubled.
+
+```{r resilience, fig.height=5}
+res <- resilience(x, window = 50)
+cls <- classify_resilience(res)
+plot(cls, type = "ribbons")
+```
+
+### Hurst Exponent
+
+The Hurst exponent quantifies long-range dependence -- how strongly the system's past predicts its future. A value of 0.5 indicates a random walk (no memory); above 0.5 the system is persistent (trends tend to continue); below 0.5 it is antipersistent (trends tend to reverse). Tracking how this exponent changes over time reveals when the system's memory structure is destabilising -- a shift from persistent to random walk means the system is losing its ability to maintain state.
+
+DFA (Detrended Fluctuation Analysis) is used here because it handles non-stationarity and trends that would bias classical R/S analysis.
+
+```{r hurst, fig.height=5}
+h <- hurst(x, method = "dfa", window = 50, step = 5)
+plot(h, type = "both")
+```
+
+```{r hurst-states}
+h |>
+  dplyr::count(state) |>
+  dplyr::mutate(pct = round(100 * n / sum(n), 1)) |>
+  dplyr::arrange(dplyr::desc(n))
+```
+
+### Hurst Early Warning Signals
+
+`detect_hurst_warnings()` combines ten binary indicators -- extreme values, trends, volatility, flickering between states, variance ratio shifts, spectral changes, autocorrelation increases, and state persistence -- into a graded warning score. Each indicator fires when its signal exceeds a data-adaptive threshold (typically the 90th percentile), so the detector calibrates itself to the specific time series. Warning levels are quantile-based: level 1 (low) through level 4 (critical).
+
+```{r hurst-ews, fig.height=6}
+ews <- detect_hurst_warnings(h)
+plot(ews)
+```
+
+```{r hurst-ews-summary}
+summary(ews)
+```
+
+## Surrogate Testing
+
+When a rolling EWS metric shows a trend, you need to know whether that trend is statistically significant or an artifact of the series' spectral structure. A random series with the same power spectrum can produce spurious trends by chance. `surrogate_test()` generates synthetic series that preserve the original's power spectrum but destroy any systematic trend direction, computes the same Kendall tau on each, and reports the fraction of surrogates with tau >= observed tau as a p-value.
+
+```{r surrogate, fig.height=5}
+st <- surrogate_test(
+  x, metric = "ar1", method = "phase",
+  n_surrogates = 199, window = 50
+)
+plot(st)
+```
+
+The histogram shows where the observed tau (red dashed line) falls relative to the surrogate distribution. In the bottom panel, the observed rolling AR(1) (red line) is compared against the 95% surrogate envelope (shaded band).
+
+```{r surrogate-summary}
+summary(st)
+```
+
+## Sensitivity Analysis
+
+Before reporting an EWS trend, verify that the result is robust to the choice of window size and detrending method. `sensitivity_ews()` sweeps a grid of parameter combinations, computes the rolling metric and its Kendall tau for each, and produces a robustness matrix. Consistent positive tau values across all combinations indicate a reliable signal; sign flips indicate a fragile result that should be interpreted cautiously.
+
+```{r sensitivity}
+sa <- sensitivity_ews(x, metric = "ar1")
+plot(sa, type = "heatmap")
+```
+
+Green tiles indicate robust positive trends; red tiles flag fragile or negative results.
+
+```{r sensitivity-summary}
+summary(sa)
+```
+
+```{r sensitivity-lines}
+plot(sa, type = "lines")
+```
+
+## References
+
+- Saqr, M., Dever, D., Lopez-Pernas, S., Gernigon, C., Marchand, G., & Kaplan, A. (2025). Complex dynamic systems in education: Beyond the static, the linear and the causal reductionism. In M. Saqr & S. Lopez-Pernas (Eds.), *Advanced learning analytics methods*. Springer. <https://lamethods.org/book2/chapters/ch12-cds/ch12-cds.html>
+- Saqr, M., Lopez-Pernas, S., & Tikka, S. (2025). Analyzing complex dynamic systems with the R package codyna. *Preprint*.
+- Saqr, M., Lopez-Pernas, S., Tikka, S., & Spitzer, M. W. H. (2026). Early warning signals appear long before dropping out: An idiographic approach grounded in complex dynamic systems theory. *arXiv preprint*, arXiv:2602.00021.
+- Saqr, M., & Lopez-Pernas, S. (2021). The longitudinal trajectories of online engagement over a full program. *Computers & Education*, 175, 104325.
+- Saqr, M., Schreuder, M. J., & Lopez-Pernas, S. (2024). Why educational research needs a complex system revolution that embraces individual differences, heterogeneity, and uncertainty. In M. Saqr & S. Lopez-Pernas (Eds.), *Learning analytics methods and tutorials: A practical guide using R*. Springer. <https://lamethods.org/book1/chapters/ch22-conclusion/ch22-conclusion.html>

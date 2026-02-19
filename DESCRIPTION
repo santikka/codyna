@@ -16,7 +16,7 @@ License: MIT + file LICENSE
 URL: https://github.com/santikka/codyna/
 BugReports: https://github.com/santikka/codyna/issues/
 Depends:
-    R (>= 4.1.0)
+    R (>= 4.2.0)
 Imports:
     checkmate,
     cli,
