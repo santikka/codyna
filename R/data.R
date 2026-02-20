@@ -189,7 +189,7 @@ extract_outcome <- function(x, outcome) {
       outcome %in% names(x),
       "The column {.val {outcome}} must exist in the data."
     )
-    return(list(last = FALSE, outcome = x[[outcome]]), var = outcome)
+    return(list(last = FALSE, outcome = x[[outcome]], var = outcome))
   }
   list(last = FALSE, outcome = outcome, var = NULL)
 }
