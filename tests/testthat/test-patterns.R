@@ -102,6 +102,29 @@ test_that("outcomes can be analyzed", {
     expect_error(NA)
 })
 
+test_that("outcome analysis supports different outcome formats", {
+  out <-  rep(1:2, length.out = nrow(mock_sequence))
+  mock_seq <- mock_sequence
+  mock_seq$out <- out
+  expect_error(
+    model1 <- analyze_outcome(mock_seq, outcome = out, len = 2),
+    NA
+  )
+  expect_error(
+    model2 <- analyze_outcome(mock_seq, outcome = "out", cols = T1:T6, len = 2),
+    NA
+  )
+  expect_error(
+    model3 <- analyze_outcome(mock_seq, outcome = "last_obs", len = 2),
+    NA
+  )
+  cf1 <- coef(model1)
+  cf2 <- coef(model2)
+  cf3 <- coef(model3)
+  expect_equal(cf1, cf2)
+  expect_equal(cf1, cf3)
+})
+
 test_that("outcome analysis supports different input formats", {
   out <-  rep(1:2, length.out = nrow(mock_sequence))
   analyze_outcome(mock_tna, outcome = out, len = 2) |>
