@@ -1,3 +1,16 @@
+#' Print Changepoint Detection Results
+#'
+#' @describeIn detect_cpts Print method for `"changepoint"` objects.
+#'   Dispatches to the tibble print method.
+#'
+#' @export
+#' @param x \[`changepoint`\]\cr A `changepoint` object.
+#' @param ... Additional arguments passed to the tibble print method.
+#' @return `x`, invisibly.
+print.changepoint <- function(x, ...) {
+  NextMethod(generic = "print", object = x, ...)
+}
+
 #' Print EWS Detection Results
 #'
 #' @export

@@ -1,3 +1,197 @@
+#' Plot Changepoint Detection Results
+#'
+#' Visualizes detected changepoints overlaid on the original time series.
+#' Supports a series view with colored segments, a diagnostics view showing
+#' segment means as a step function, or both panels stacked.
+#'
+#' @details
+#' Three plot types are available:
+#'
+#' **`type = "series"` (default).** The original time series is drawn as a
+#' line with segments colored by their segment ID. Vertical dashed lines
+#' mark changepoint locations. This view immediately shows where the series
+#' was split and how distinct the segments are.
+#'
+#' **`type = "diagnostics"`.** The segment means are drawn as a step
+#' function (horizontal lines at each segment's mean), with vertical dashed
+#' lines at changepoint locations and points marking the mean of each
+#' segment. This view focuses on the magnitude and direction of each
+#' detected shift.
+#'
+#' **`type = "both"`.** Stacks the series panel on top and the diagnostics
+#' panel below using [patchwork::wrap_plots()], with shared time axes.
+#'
+#' @export
+#' @param x \[`changepoint`\]\cr
+#'   An object of class `changepoint` as returned by
+#'   [detect_cpts()].
+#' @param type \[`character(1)`: `"series"`\]\cr
+#'   Plot type: `"series"` for colored segments with changepoint lines,
+#'   `"diagnostics"` for segment mean step function, or `"both"` for
+#'   both panels stacked.
+#' @param ... Additional arguments (currently unused).
+#' @return A [ggplot2::ggplot()] object (or a [patchwork::wrap_plots()]
+#'   composite when `type = "both"`).
+#'
+#' @seealso [detect_cpts()] for computing the changepoint analysis.
+#' @examples
+#' \donttest{
+#' set.seed(42)
+#' x <- c(rnorm(200, 0, 1), rnorm(200, 5, 1))
+#' cpts <- detect_cpts(x, method = "pelt")
+#' plot(cpts)
+#' plot(cpts, type = "diagnostics")
+#' plot(cpts, type = "both")
+#' }
+plot.changepoint <- function(x, type = "series", ...) {
+  check_missing(x)
+  check_class(x, "changepoint")
+  type <- check_match(type, c("series", "diagnostics", "both"))
+  cpt_locs <- attr(x, "changepoint_locations")
+  n_cpt <- attr(x, "n_changepoints")
+  colors <- changepoint_colors_()
+  observed_states <- levels(x$state)
+  # Map state names to colours by name; fall back to cycling for unknowns
+  seg_colors <- vapply(
+    observed_states,
+    function(s) {
+      if (s %in% names(colors)) {
+        colors[[s]]
+      } else {
+        colors[[(match(s, observed_states) - 1L) %% length(colors) + 1L]]
+      }
+    },
+    character(1L)
+  )
+  names(seg_colors) <- observed_states
+  if (type == "series" || type == "both") {
+    p_series <- x |>
+      ggplot2::ggplot(
+        ggplot2::aes(
+          x = !!rlang::sym("time"),
+          y = !!rlang::sym("value"),
+          color = !!rlang::sym("state")
+        )
+      ) +
+      ggplot2::geom_line(linewidth = 0.5) +
+      ggplot2::scale_color_manual(
+        values = seg_colors,
+        name = "State"
+      )
+    if (n_cpt > 0L) {
+      cpt_df <- data.frame(xint = x$time[cpt_locs + 1L])
+      p_series <- p_series +
+        ggplot2::geom_vline(
+          data = cpt_df,
+          mapping = ggplot2::aes(xintercept = !!rlang::sym("xint")),
+          linetype = "dashed",
+          color = "red",
+          linewidth = 0.6,
+          inherit.aes = FALSE
+        )
+    }
+    p_series <- p_series +
+      ggplot2::labs(
+        title = sprintf(
+          "Changepoint Detection (%s): %d changepoint%s",
+          attr(x, "method"),
+          n_cpt,
+          ifelse_(n_cpt == 1L, "", "s")
+        ),
+        x = "Time",
+        y = "Value"
+      ) +
+      ggplot2::theme_minimal() +
+      ggplot2::theme(
+        legend.position = "bottom",
+        plot.title = ggplot2::element_text(size = 14, face = "bold"),
+        axis.title = ggplot2::element_text(color = "black", face = "bold"),
+        axis.text = ggplot2::element_text(color = "black")
+      )
+    if (type == "series") {
+      return(p_series)
+    }
+  }
+  if (type == "diagnostics" || type == "both") {
+    seg_ids <- sort(unique(x$segment))
+    step_df <- do.call(
+      base::rbind,
+      lapply(
+        seg_ids,
+        function(s) {
+          seg_rows <- x[x$segment == s, ]
+          data.frame(
+            xmin = min(seg_rows$time),
+            xmax = max(seg_rows$time),
+            ymean = seg_rows$segment_mean[1L],
+            state = seg_rows$state[1L],
+            stringsAsFactors = FALSE
+          )
+        }
+      )
+    )
+    step_df$xmid <- (step_df$xmin + step_df$xmax) / 2
+    p_diag <- ggplot2::ggplot(step_df) +
+      ggplot2::geom_segment(
+        ggplot2::aes(
+          x = !!rlang::sym("xmin"),
+          xend = !!rlang::sym("xmax"),
+          y = !!rlang::sym("ymean"),
+          yend = !!rlang::sym("ymean"),
+          color = !!rlang::sym("state")
+        ),
+        linewidth = 1.2
+      ) +
+      ggplot2::geom_point(
+        ggplot2::aes(
+          x = !!rlang::sym("xmid"),
+          y = !!rlang::sym("ymean"),
+          color = !!rlang::sym("state")
+        ),
+        size = 3
+      ) +
+      ggplot2::scale_color_manual(
+        values = seg_colors,
+        name   = "State"
+      )
+    if (n_cpt > 0L) {
+      cpt_df <- data.frame(xint = x$time[cpt_locs + 1L])
+      p_diag <- p_diag +
+        ggplot2::geom_vline(
+          data = cpt_df,
+          mapping = ggplot2::aes(xintercept = !!rlang::sym("xint")),
+          linetype = "dashed",
+          color = "red",
+          linewidth = 0.6,
+          inherit.aes = FALSE
+        )
+    }
+    p_diag <- p_diag +
+      ggplot2::labs(
+        title = "Segment Means (Step Function)",
+        x = "Time",
+        y = "Segment Mean"
+      ) +
+      ggplot2::theme_minimal() +
+      ggplot2::theme(
+        legend.position = "bottom",
+        plot.title = ggplot2::element_text(size = 14, face = "bold"),
+        axis.title = ggplot2::element_text(color = "black", face = "bold"),
+        axis.text = ggplot2::element_text(color = "black")
+      )
+    if (type == "diagnostics") {
+      return(p_diag)
+    }
+  }
+  p_series <- p_series +
+    ggplot2::theme(
+      axis.text.x  = ggplot2::element_blank(),
+      axis.ticks.x = ggplot2::element_blank(),
+      axis.title.x = ggplot2::element_blank()
+    )
+  patchwork::wrap_plots(p_series, p_diag, ncol = 1L, heights = c(1, 1))
+}
+
 #' Plot EWS Results
 #'
 #' @export
