@@ -7,7 +7,7 @@
 discover_patterns(
   data,
   cols = tidyselect::everything(),
-  group,
+  outcome,
   type = "ngram",
   pattern,
   len = 2:5,
@@ -28,9 +28,9 @@ The input should be coercible to a \code{data.frame} object.}
 A tidy selection of columns that should be considered as sequence data.
 By default, all columns are used.}
 
-\item{group}{[\code{character(1)}, \code{vector()}]\cr
+\item{outcome}{[\code{character(1)}, \code{vector()}]\cr
 Optional grouping specification. The option \code{"last_obs"} assumes that the
-last non-missing observation of each sequence specifies the group.
+last non-missing observation of each sequence specifies the outcome group.
 Alternatively, a column name of \code{data} or a \code{vector} with the same length
 as the number of rows of \code{data}.}
 
@@ -85,7 +85,7 @@ the same length.
 individual states of the pattern. For wildcards, the support is always 1.
 }
 
-In addition, if \code{group} is provided, additional columns giving the counts
+In addition, if \code{outcome} is provided, additional columns giving the counts
 in each outcome group, the chi-squared test statistic values (\code{chisq}),
 and p-values (\code{p_value})  are included.
 }
