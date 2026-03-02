@@ -59,7 +59,7 @@ test_that("pattern discovery supports different input formats", {
 test_that("pattern discovery supports last observation as group", {
   mock_sequence_out <- mock_sequence
   mock_sequence_out$T7 <- rep(c("D", "F"), length.out = nrow(mock_sequence))
-  patterns <- discover_patterns(mock_sequence_out, group = "last_obs") |>
+  patterns <- discover_patterns(mock_sequence_out, outcome = "last_obs") |>
     expect_error(NA)
   all(c("count_D", "count_F", "chisq") %in% names(patterns)) |>
     expect_true()
@@ -84,7 +84,7 @@ test_that("discovered patterns can be plotted", {
   plot(patterns1) |>
     expect_error(NA)
   grp <- rep(1:2, length.out = nrow(mock_sequence))
-  patterns2 <- discover_patterns(mock_sequence, group = grp)
+  patterns2 <- discover_patterns(mock_sequence, outcome = grp)
   plot(patterns2) |>
     expect_error(NA)
   plot(patterns2, group = "1", global = FALSE) |>

@@ -10,9 +10,9 @@
 #'
 #' @export
 #' @inheritParams convert
-#' @param group \[`character(1)`, `vector()`]\cr
+#' @param outcome \[`character(1)`, `vector()`]\cr
 #'   Optional grouping specification. The option `"last_obs"` assumes that the
-#'   last non-missing observation of each sequence specifies the group.
+#'   last non-missing observation of each sequence specifies the outcome group.
 #'   Alternatively, a column name of `data` or a `vector` with the same length
 #'   as the number of rows of `data`.
 #' @param type \[`character(1)`: `"ngram"`]\cr
@@ -55,7 +55,7 @@
 #'   * `lift`: the support divided by the product of the supports of the
 #'     individual states of the pattern. For wildcards, the support is always 1.
 #'
-#' In addition, if `group` is provided, additional columns giving the counts
+#' In addition, if `outcome` is provided, additional columns giving the counts
 #' in each outcome group, the chi-squared test statistic values (`chisq`),
 #' and p-values (`p_value`)  are included.
 #' @examples
@@ -72,13 +72,13 @@
 #' custom <- discover_patterns(engagement, pattern = "Active->*")
 #'
 discover_patterns <- function(data, cols = tidyselect::everything(),
-                              group, type = "ngram", pattern,
+                              outcome, type = "ngram", pattern,
                               len = 2:5, gap = 1:3, min_freq = 2,
                               min_support = 0.01, start, end, contain) {
   check_missing(data)
   data <- extract_data(data)
   group_attr <- attr(data, "group")
-  resp <- extract_outcome(data, group)
+  resp <- extract_outcome(data, outcome)
   cols <- get_cols(rlang::enquo(cols), data) |>
     setdiff(c(group_attr, resp$var))
   seqdata <- prepare_sequence_data(data, cols)
