@@ -135,12 +135,22 @@ test_that("print does not error", {
     expect_error(NA)
 })
 
-test_that("summary does not error and returns list invisibly", {
+test_that("summary does not error", {
   result <- detect_cpts(cpt_data)
-  out <- capture.output(s <- summary(result))
-  expect_type(s, "list")
-  expect_true("n_changepoints" %in% names(s))
-  expect_true("segments" %in% names(s))
+  sumr <- summary(result)
+  nm <- names(sumr)
+  expect_type(sumr, "list")
+  expect_true("cpts" %in% nm)
+  expect_true("changes" %in% nm)
+  expect_true("segments" %in% nm)
+})
+
+test_that("summary print does not error", {
+  result <- detect_cpts(cpt_data)
+  sumr <- summary(result)
+  capture.output(print(sumr)) |>
+    expect_error(NA)
+  expect_type(sumr, "list")
 })
 
 test_that("plot does not error", {

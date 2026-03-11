@@ -289,9 +289,16 @@ changepoint_pelt_ <- function(x, type, pen, min_segment, max_cpt) {
       cpts,
       function(cpt) {
         # Estimate gain by removing this changepoint
-        # TODO fix
-        seg_before_start <- if (cpt == cpts[1L]) 1L else cpts[which(cpts == cpt) - 1L] + 1L
-        seg_after_end <- if (cpt == cpts[length(cpts)]) n else cpts[which(cpts == cpt) + 1L]
+        seg_before_start <- ifelse_(
+          cpt == cpts[1L],
+          1L,
+          cpts[which(cpts == cpt) - 1L] + 1L
+        )
+        seg_after_end <- ifelse_(
+          cpt == cpts[length(cpts)],
+          n,
+          cpts[which(cpts == cpt) + 1L]
+        )
         left <- x[seg_before_start:cpt]
         right <- x[(cpt + 1L):seg_after_end]
         combined <- x[seg_before_start:seg_after_end]
@@ -345,7 +352,7 @@ changepoint_classify_ <- function(seg_means, overall_mean, overall_sd) {
   regime_means <- numeric(0)
   regime[1L] <- 1L
   regime_means[1L] <- seg_means[1L]
-  if (n > 1L) { # TODO check
+  if (n > 1L) {
     for (i in 2:n) {
       dists <- abs(seg_means[i] - regime_means)
       closest <- which.min(dists)
@@ -361,7 +368,6 @@ changepoint_classify_ <- function(seg_means, overall_mean, overall_sd) {
       }
     }
   }
-  # TODO cut
   level <- vapply(
     seg_means,
     function(m) {
@@ -381,13 +387,11 @@ changepoint_classify_ <- function(seg_means, overall_mean, overall_sd) {
     for (i in 2:n) {
       mag <- seg_means[i] - seg_means[i - 1L]
       magnitude[i] <- mag
-      # TODO cut
       direction[i] <- if (mag > 0.1 * overall_sd) {
         "higher"
       } else if (mag < -0.1 * overall_sd) {
         "lower"
-      }
-      else {
+      } else {
         "no_change"
       }
     }
@@ -544,10 +548,10 @@ changepoint_classify_ <- function(seg_means, overall_mean, overall_sd) {
 #' # Mean shift at t = 200
 #' set.seed(42)
 #' x <- c(rnorm(200, 0, 1), rnorm(200, 5, 1))
-#' cp <- detect_cpts(x, method = "pelt")
-#' cp
-#' summary(cp)
-#' plot(cp)
+#' cpts <- detect_cpts(x, method = "pelt")
+#' cpts
+#' summary(cpts)
+#' plot(cpts)
 #'
 #' # Multiple changepoints
 #' set.seed(123)
@@ -699,64 +703,42 @@ detect_cpts <- function(data, method = "cusum", penalty = "bic",
 #' @param object \[`changepoint`\]\cr
 #'   A `changepoint` object.
 #' @param ... Additional arguments (currently unused).
-#' @return A list with elements `n_changepoints`, `changepoint_locations`,
-#'   `changes` (data.frame with columns `location`, `from_mean`,
-#'   `to_mean`, `mean_shift`, `from_var`, `to_var`), and `segments`
-#'   (data.frame with columns `segment`, `start`, `end`, `length`,
-#'   `mean`, `variance`), returned invisibly.
+#' @return A `summary.changepoint` object, which is a list with the following
+#'   elements:
+#'
+#'   * `cpts`: The original `changepoint` object.
+#'   * `changes` (a `data.frame` with columns `location`, `from_mean`,
+#'     `to_mean`, `mean_shift`, `from_var`, `to_var`)
+#'   * `segments` (a `data.frame` with columns `segment`, `start`, `end`,
+#'     `length`, `mean`, `variance`).
+#'
 summary.changepoint <- function(object, ...) {
   # TODO fix
   check_missing(object)
   check_class(object, "changepoint")
   n_cpt <- attr(object, "n_changepoints")
   cpt_locs <- attr(object, "changepoint_locations")
-  cat("Changepoint Detection Summary\n")
-  cat("  Method           :", attr(object, "method"), "\n")
-  cat("  Change type      :", attr(object, "type"), "\n")
-  cat("  Penalty          :", attr(object, "penalty"), "\n")
-  cat("  Min segment      :", attr(object, "min_segment"), "\n")
-  cat("  N observations   :", nrow(object), "\n")
-  cat("  N changepoints   :", n_cpt, "\n")
-  if (n_cpt > 0L) {
-    cat("  Locations        :", paste(cpt_locs, collapse = ", "), "\n")
-  }
-
-  # Segment statistics
   seg_ids <- sort(unique(object$segment))
-  seg_stats <- do.call(rbind, lapply(seg_ids, function(s) {
-    rows <- object[object$segment == s, ]
-    data.frame(
-      segment = s,
-      start = min(rows$time),
-      end = max(rows$time),
-      length = nrow(rows),
-      mean = round(rows$segment_mean[1L], 4),
-      variance = round(rows$segment_var[1L], 4),
-      stringsAsFactors = FALSE
+  seg_stats <- do.call(
+    base::rbind,
+    lapply(
+      seg_ids,
+      function(s) {
+        rows <- object[object$segment == s, ]
+        data.frame(
+          segment = s,
+          start = min(rows$time),
+          end = max(rows$time),
+          length = nrow(rows),
+          mean = round(rows$segment_mean[1L], 4),
+          variance = round(rows$segment_var[1L], 4),
+          stringsAsFactors = FALSE
+        )
+      }
     )
-  }))
-
-  cat("\n  Segment statistics:\n")
-  for (i in seq_len(nrow(seg_stats))) {
-    seg_regime <- object$regime[object$segment == seg_stats$segment[i]][1L]
-    seg_state  <- as.character(object$state[object$segment == seg_stats$segment[i]][1L])
-    cat(sprintf(
-      "    Segment %d (regime %d) [%s]: t = [%s, %s], n = %d, mean = %.4f, var = %.4f\n",
-      seg_stats$segment[i],
-      seg_regime,
-      seg_state,
-      seg_stats$start[i],
-      seg_stats$end[i],
-      seg_stats$length[i],
-      seg_stats$mean[i],
-      seg_stats$variance[i]
-    ))
-  }
-
-  # Change details
+  )
   changes <- NULL
   if (n_cpt > 0L) {
-    cat("\n  Change details:\n")
     changes <- data.frame(
       location = integer(n_cpt),
       from_mean = numeric(n_cpt),
@@ -778,18 +760,15 @@ summary.changepoint <- function(object, ...) {
       changes$mean_shift[i] <- round(shift, 4)
       changes$from_var[i] <- from_seg$variance
       changes$to_var[i] <- to_seg$variance
-      cat(sprintf(
-        "    CP %d at t = %d [%s]: mean %.4f -> %.4f (%s of %.4f), var %.4f -> %.4f\n",
-        i, cpt_locs[i], cpt_type_val %||% "change",
-        from_seg$mean, to_seg$mean, direction, abs(shift),
-        from_seg$variance, to_seg$variance
-      ))
     }
   }
-  invisible(list(
-    n_changepoints = n_cpt,
-    changepoint_locations = cpt_locs,
-    changes = changes,
-    segments = seg_stats
-  ))
+  structure(
+    list(
+      cpts = object,
+      changes = changes,
+      segments = seg_stats
+    ),
+    class = "summary.changepoint"
+  )
+
 }
