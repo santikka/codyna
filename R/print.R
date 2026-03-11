@@ -131,3 +131,82 @@ print.regimes <- function(x, ...) {
 print.patterns <- function(x, ...) {
   NextMethod(generic = "print", object = x, ...)
 }
+
+#' Print a Hurst Rolling Analysis Object
+#'
+#' Prints the underlying tibble of rolling Hurst exponent results. Delegates
+#' to the default tibble print method.
+#'
+#' @export
+#' @param x \[`hurst`\]\cr
+#'   A `hurst` object as returned by [hurst()] with `states = TRUE`.
+#' @param ... Additional arguments passed to the tibble print method.
+#' @return `x`, invisibly.
+print.hurst <- function(x, ...) {
+  NextMethod(generic = "print", object = x, ...)
+}
+
+#' Print Hurst Early Warning Signal Results
+#'
+#' Prints the underlying tibble of early warning signal results. Delegates
+#' to the default tibble print method.
+#'
+#' @export
+#' @param x \[`hurst_ews`\]\cr
+#'   A `hurst_ews` object as returned by [detect_hurst_warnings()].
+#' @param ... Additional arguments passed to the tibble print method.
+#' @return `x`, invisibly.
+#' @family hurst
+print.hurst_ews <- function(x, ...) {
+  NextMethod(generic = "print", object = x, ...)
+}
+
+
+#' Print a Global Hurst Exponent Result
+#'
+#' Prints a concise summary of a single global Hurst exponent estimate,
+#' including the method, series length, exponent value, \eqn{R^2}, and
+#' state classification.
+#'
+#' @export
+#' @param x \[`hurst_global`]\cr
+#'   A `hurst_global` object as returned by [hurst()] with
+#'   `states = FALSE`.
+#' @param ... Additional arguments (currently unused).
+#' @return `x`, invisibly.
+print.hurst_global <- function(x, ...) {
+  check_missing(x)
+  check_class(x, "hurst_global")
+  cat("Hurst Exponent Analysis\n\n")
+  cat("Method :", x$method, "\n")
+  cat("N      :", x$n, "\n")
+  cat("Hurst  :", round(x$hurst, 4L), "\n")
+  cat("R\u00b2     :", round(x$r_squared, 4L), "\n")
+  cat("State  :", hurst_classify(x$hurst), "\n")
+  invisible(x)
+}
+
+
+#' Print Hurst Early Warning Signal Analysis Summary
+#'
+#' @export
+#' @param x \[`summary.hurst_ews`]\cr A `summary.hurst_ews` object.
+#' @param ... Additional arguments (currently unused).
+#' @return `x`, invisibly.
+print.summary.hurst_ews <- function(x, ...) {
+  check_missing(x)
+  check_class(x, "summary.hurst_ews")
+  n <- x$n
+  counts <- x$counts
+  labels <- x$labels
+  max_level <- x$max_level
+  cat("Hurst Early Warning Signal Summary\n\n")
+  cat("Number of time points:", n, "\n")
+  cat("Max warning level:", labels[max_level + 1L], "\n")
+  cat("Warning distribution:\n")
+  for (i in seq_along(labels)) {
+    pct <- round(100 * counts[i] / n, 1L)
+    cat("  ", labels[i], ": ", counts[i], " (", pct, "%)\n", sep = "")
+  }
+  invisible(x)
+}

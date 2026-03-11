@@ -1,425 +1,4 @@
-#' Compute segment cost under normal log-likelihood
-#'
-#' Returns the negative log-likelihood cost of modelling `x` as a single
-#' segment. The cost depends on `type`: for "mean" only the variance term
-#' matters; for "variance" the mean is assumed known; for "both" the full
-#' normal log-likelihood is used.
-#'
-#' @param x Numeric vector (segment data).
-#' @param type One of "mean", "variance", "both".
-#' @return Single numeric cost value.
-#' @noRd
-changepoint_cost_ <- function(x, type) {
-  n <- length(x)
-  if (n < 2L) {
-    return(0)
-  }
-  mu <- mean(x)
-  switch(
-    type,
-    mean = {
-      # RSS: residual sum of squares from segment mean.
-      # Matches changepoint::cpt.mean() cost function.
-      sum((x - mu)^2)
-    },
-    variance = {
-      # n * log(var_MLE): Gaussian log-likelihood for variance detection.
-      # Matches changepoint::cpt.var() cost function.
-      v <- sum((x - mu)^2) / n
-      if (v < .Machine$double.eps) v <- .Machine$double.eps
-      n * log(v)
-    },
-    both = {
-      # Full Normal log-likelihood: n * log(var_MLE) + n.
-      # Matches changepoint::cpt.meanvar() cost function.
-      v <- sum((x - mu)^2) / n
-      if (v < .Machine$double.eps) v <- .Machine$double.eps
-      n * log(v) + n
-    },
-    {
-      sum((x - mu)^2)
-    }
-  )
-}
 
-#' Compute penalty value from penalty specification
-#'
-#' @param penalty Character: "bic", "aic", or "manual".
-#' @param penalty_value Numeric value for manual penalty (ignored otherwise).
-#' @param n Integer series length.
-#' @return Single numeric penalty value.
-#' @noRd
-changepoint_penalty_ <- function(penalty, penalty_value, n, type) {
-  # Number of parameters per changepoint: mean or variance = 2, both = 3
-  # Matches the changepoint package (Killick et al.) penalty computation
-  p <- ifelse_(type == "both", 3, 2)
-  switch(
-    penalty,
-    bic = p * log(n),
-    aic = 2 * p,
-    manual = {
-      if (is.null(penalty_value) || !is.numeric(penalty_value)) {
-        stop_(
-          "When {.arg penalty} is {.val manual},
-          {.arg penalty_value} must be a numeric value."
-        )
-      }
-      penalty_value
-    },
-    p * log(n)
-  )
-}
-
-#' Find the single best changepoint in a segment using likelihood ratio
-#'
-#' Scans all candidate split positions within `x` and returns the position
-#' that maximises the likelihood ratio (cost reduction). Returns NULL if no
-#' valid split exists.
-#'
-#' @param x Numeric vector.
-#' @param type Cost type.
-#' @param min_segment Minimum segment length.
-#' @return List with `pos` (best split position relative to x) and
-#'   `gain` (cost improvement), or NULL.
-#' @noRd
-changepoint_best_split_ <- function(x, type, min_segment) {
-  n <- length(x)
-  if (n < 2L * min_segment) {
-    return(NULL)
-  }
-  cost_full <- changepoint_cost_(x, type)
-  best_gain <- -Inf
-  best_pos <- NULL
-  candidates <- seq(min_segment, n - min_segment)
-  for (tau in candidates) {
-    left <- x[seq_len(tau)]
-    right <- x[(tau + 1L):n]
-    cost_split <- changepoint_cost_(left, type) +
-      changepoint_cost_(right, type)
-    gain <- cost_full - cost_split
-    if (gain > best_gain) {
-      best_gain <- gain
-      best_pos <- tau
-    }
-  }
-  list(pos = best_pos, gain = best_gain)
-}
-
-#' CUSUM statistic for a segment
-#'
-#' Computes cumulative sum of deviations from the segment mean.
-#' Returns the index of the maximum absolute CUSUM value.
-#'
-#' @param x Numeric vector.
-#' @return Integer index of maximum |CUSUM|.
-#' @noRd
-changepoint_cusum_stat_ <- function(x) {
-  n <- length(x)
-  mu <- mean(x)
-  cusum <- cumsum(x - mu)
-  which.max(abs(cusum))
-}
-
-#' CUSUM-based changepoint detection via binary segmentation
-#'
-#' Uses CUSUM to identify the most likely changepoint, then tests whether
-#' the split is worthwhile via a penalty-based likelihood ratio test.
-#' Recurses on both halves if the split is accepted.
-#'
-#' @param x Numeric vector.
-#' @param type Cost type.
-#' @param pen Penalty value.
-#' @param min_segment Minimum segment length.
-#' @param max_cp Maximum changepoints remaining (NULL = unlimited).
-#' @param offset Integer offset for converting local indices to global.
-#' @return Integer vector of global changepoint positions.
-#' @noRd
-changepoint_cusum_ <- function(x, type, pen, min_segment, max_cp, offset) {
-  n <- length(x)
-  if (n < 2L * min_segment) {
-    return(integer(0))
-  }
-  if (!is.null(max_cp) && max_cp <= 0L) {
-    return(integer(0))
-  }
-  # Find CUSUM-based candidate
-  tau <- changepoint_cusum_stat_(x)
-  if (tau < min_segment || (n - tau) < min_segment) {
-    return(integer(0))
-  }
-  # Check if split is worthwhile
-  cost_full <- changepoint_cost_(x, type)
-  left <- x[seq_len(tau)]
-  right <- x[(tau + 1L):n]
-  cost_split <- changepoint_cost_(left, type) +
-    changepoint_cost_(right, type)
-  gain <- cost_full - cost_split
-  if (gain <= pen) return(integer(0))
-  global_pos <- tau + offset
-  new_max <- onlyif(!is.null(max_cp), max_cp - 1L)
-  left_cp <- changepoint_cusum_(
-    left, type, pen, min_segment, new_max, offset
-  )
-  if (!is.null(new_max)) {
-    new_max <- new_max - length(left_cp)
-  }
-  right_cp <- changepoint_cusum_(
-    right, type, pen, min_segment, new_max, offset + tau
-  )
-  sort(c(left_cp, global_pos, right_cp))
-}
-
-#' Binary segmentation changepoint detection
-#'
-#' Iteratively finds the best single split and recurses if the gain
-#' exceeds the penalty.
-#'
-#' @param x Numeric vector.
-#' @param type Cost type.
-#' @param pen Penalty value.
-#' @param min_segment Minimum segment length.
-#' @param max_cp Maximum changepoints remaining.
-#' @param offset Integer offset for global indexing.
-#' @return Integer vector of global changepoint positions.
-#' @noRd
-changepoint_binseg_ <- function(x, type, pen, min_segment, max_cp, offset) {
-  n <- length(x)
-  if (n < 2L * min_segment) {
-    return(integer(0))
-  }
-  if (!is.null(max_cp) && max_cp <= 0L) {
-    return(integer(0))
-  }
-  result <- changepoint_best_split_(x, type, min_segment)
-  if (result$gain <= pen) return(integer(0))
-  tau <- result$pos
-  global_pos <- tau + offset
-  new_max <- onlyif(!is.null(max_cp), max_cp - 1L)
-  left <- x[seq_len(tau)]
-  left_cp <- changepoint_binseg_(
-    left, type, pen, min_segment, new_max, offset
-  )
-  if (!is.null(new_max)) {
-    new_max <- new_max - length(left_cp)
-  }
-  right <- x[(tau + 1L):n]
-  right_cp <- changepoint_binseg_(
-    right, type, pen, min_segment, new_max, offset + tau
-  )
-  sort(c(left_cp, global_pos, right_cp))
-}
-
-#' PELT changepoint detection
-#'
-#' Pruned Exact Linear Time algorithm. Uses dynamic programming with
-#' pruning to find the exact optimal segmentation under a penalised
-#' cost criterion.
-#'
-#' @param x Numeric vector.
-#' @param type Cost type.
-#' @param pen Penalty value.
-#' @param min_segment Minimum segment length.
-#' @param max_cp Maximum number of changepoints (NULL = unlimited).
-#' @return Integer vector of changepoint positions.
-#' @noRd
-changepoint_pelt_ <- function(x, type, pen, min_segment, max_cpt) {
-
-  n <- length(x)
-  if (n < 2L * min_segment) {
-    return(integer(0))
-  }
-  # F[t+1] = optimal cost for data 1..t (0-indexed: F[1] = cost for 0 data)
-  f_cost <- rep(Inf, n + 1L)
-  f_cost[1L] <- -pen  # F(0) = -beta so F(0) + C(0+1..t) + beta = C(1..t)
-  cpt_trace <- vector("list", n + 1L)
-  cpt_trace[[1L]] <- integer(0)
-  # R: set of candidate last changepoints (0-indexed positions)
-  candidates <- 0L
-  for (t_star in seq_len(n)) {
-    best_cost <- Inf
-    best_tau <- 0L
-    # First pass: find optimal cost
-    cost_vals <- numeric(length(candidates))
-    valid_mask <- logical(length(candidates))
-    for (ci in seq_along(candidates)) {
-      tau <- candidates[ci]
-      seg_start <- tau + 1L
-      seg_end <- t_star
-      seg_len <- seg_end - seg_start + 1L
-      if (seg_len < min_segment) {
-        valid_mask[ci] <- FALSE
-        cost_vals[ci] <- Inf
-        next
-      }
-      valid_mask[ci] <- TRUE
-      seg <- x[seg_start:seg_end]
-      cost_vals[ci] <- f_cost[tau + 1L] + changepoint_cost_(seg, type) + pen
-      if (cost_vals[ci] < best_cost) {
-        best_cost <- cost_vals[ci]
-        best_tau <- tau
-      }
-    }
-    f_cost[t_star + 1L] <- best_cost
-    # Reconstruct changepoint list
-    prev_cpts <- cpt_trace[[best_tau + 1L]]
-    if (best_tau > 0L) {
-      cpt_trace[[t_star + 1L]] <- c(prev_cpts, best_tau)
-    } else {
-      cpt_trace[[t_star + 1L]] <- prev_cpts
-    }
-    # PELT pruning: keep candidates where F(tau) + C(tau+1..t) + pen <= F(t)
-    # Candidates with segments too short are always kept (may become valid later)
-    prune_keep <- integer(0)
-    for (ci in seq_along(candidates)) {
-      if (!valid_mask[ci] || cost_vals[ci] <= best_cost + pen) {
-        prune_keep <- c(prune_keep, candidates[ci])
-      }
-    }
-    # Add current t_star as a candidate
-    candidates <- unique(c(prune_keep, t_star))
-  }
-  cpts <- cpt_trace[[n + 1L]]
-  if (length(cpts) == 0L) {
-    return(integer(0))
-  }
-  cpts <- sort(unique(cpts))
-  # Enforce max_changepoints
-  if (!is.null(max_cpt) && length(cpts) > max_cpt) {
-    gains <- vapply(
-      cpts,
-      function(cpt) {
-        # Estimate gain by removing this changepoint
-        seg_before_start <- ifelse_(
-          cpt == cpts[1L],
-          1L,
-          cpts[which(cpts == cpt) - 1L] + 1L
-        )
-        seg_after_end <- ifelse_(
-          cpt == cpts[length(cpts)],
-          n,
-          cpts[which(cpts == cpt) + 1L]
-        )
-        left <- x[seg_before_start:cpt]
-        right <- x[(cpt + 1L):seg_after_end]
-        combined <- x[seg_before_start:seg_after_end]
-        changepoint_cost_(combined, type) -
-          (changepoint_cost_(left, type) + changepoint_cost_(right, type))
-      },
-      numeric(1)
-    )
-    keep_idx <- order(gains, decreasing = TRUE)[seq_len(max_cpt)]
-    cpts <- sort(cpts[keep_idx])
-  }
-  cpts
-}
-
-#' Colour palette for changepoint regime states
-#'
-#' Named colours for the 9 possible level x changepoint_type combinations.
-#' @noRd
-changepoint_colors_ <- function() {
-  c(
-    high_initial = "#E53935",
-    high_change = "#C62828",
-    high_return = "#EF5350",
-    medium_initial = "#FFA726",
-    medium_change = "#F57C00",
-    medium_return = "#FFCC80",
-    low_initial = "#43A047",
-    low_change = "#2E7D32",
-    low_return = "#66BB6A"
-  )
-}
-
-#' Classify changepoint segments into meaningful regime labels
-#'
-#' Groups segments with similar means into shared regimes, classifies
-#' each segment by level (high/medium/low) and direction (higher/lower),
-#' and labels changepoints as "change" (new regime) or "return" (revisit).
-#'
-#' @param seg_means Numeric vector of per-segment means.
-#' @param overall_mean Numeric, global series mean.
-#' @param overall_sd Numeric, global series SD.
-#' @return List with: regime (integer), level (character),
-#'   direction (character), magnitude (numeric),
-#'   changepoint_type (character), state (character).
-#'   Each vector has length equal to number of segments.
-#' @noRd
-changepoint_classify_ <- function(seg_means, overall_mean, overall_sd) {
-  n <- length(seg_means)
-  threshold <- 0.5 * overall_sd
-  regime <- integer(n)
-  regime_means <- numeric(0)
-  regime[1L] <- 1L
-  regime_means[1L] <- seg_means[1L]
-  if (n > 1L) {
-    for (i in 2:n) {
-      dists <- abs(seg_means[i] - regime_means)
-      closest <- which.min(dists)
-      if (dists[closest] <= threshold) {
-        regime[i] <- closest
-        regime_means[closest] <- mean(
-          seg_means[regime[seq_len(i)] == closest]
-        )
-      } else {
-        new_id <- length(regime_means) + 1L
-        regime[i] <- new_id
-        regime_means[new_id] <- seg_means[i]
-      }
-    }
-  }
-  level <- vapply(
-    seg_means,
-    function(m) {
-      if (m > overall_mean + 0.5 * overall_sd) {
-        return("high")
-      }
-      if (m < overall_mean - 0.5 * overall_sd) {
-        return("low")
-      }
-      "medium"
-    },
-    character(1L)
-  )
-  direction <- rep(NA_character_, n)
-  magnitude <- rep(NA_real_, n)
-  if (n > 1L) {
-    for (i in 2:n) {
-      mag <- seg_means[i] - seg_means[i - 1L]
-      magnitude[i] <- mag
-      direction[i] <- if (mag > 0.1 * overall_sd) {
-        "higher"
-      } else if (mag < -0.1 * overall_sd) {
-        "lower"
-      } else {
-        "no_change"
-      }
-    }
-  }
-  changepoint_type <- rep(NA_character_, n)
-  seen_regimes <- regime[1L]
-  if (n > 1L) {
-    for (i in 2:n) {
-      if (regime[i] %in% seen_regimes) {
-        changepoint_type[i] <- "return"
-      } else {
-        changepoint_type[i] <- "change"
-        seen_regimes <- c(seen_regimes, regime[i])
-      }
-    }
-  }
-  cpt_for_state <- changepoint_type
-  cpt_for_state[is.na(cpt_for_state)] <- "initial"
-  state <- paste0(level, "_", cpt_for_state)
-  list(
-    regime = regime,
-    level = level,
-    direction = direction,
-    magnitude = magnitude,
-    changepoint_type = changepoint_type,
-    state = state
-  )
-}
 
 #' Detect Changepoints in Time Series Data
 #'
@@ -770,5 +349,427 @@ summary.changepoint <- function(object, ...) {
     ),
     class = "summary.changepoint"
   )
+}
 
+#' Compute segment cost under normal log-likelihood
+#'
+#' Returns the negative log-likelihood cost of modelling `x` as a single
+#' segment. The cost depends on `type`: for "mean" only the variance term
+#' matters; for "variance" the mean is assumed known; for "both" the full
+#' normal log-likelihood is used.
+#'
+#' @param x Numeric vector (segment data).
+#' @param type One of "mean", "variance", "both".
+#' @return Single numeric cost value.
+#' @noRd
+changepoint_cost_ <- function(x, type) {
+  n <- length(x)
+  if (n < 2L) {
+    return(0)
+  }
+  mu <- mean(x)
+  switch(
+    type,
+    mean = {
+      # RSS: residual sum of squares from segment mean.
+      # Matches changepoint::cpt.mean() cost function.
+      sum((x - mu)^2)
+    },
+    variance = {
+      # n * log(var_MLE): Gaussian log-likelihood for variance detection.
+      # Matches changepoint::cpt.var() cost function.
+      v <- sum((x - mu)^2) / n
+      if (v < .Machine$double.eps) v <- .Machine$double.eps
+      n * log(v)
+    },
+    both = {
+      # Full Normal log-likelihood: n * log(var_MLE) + n.
+      # Matches changepoint::cpt.meanvar() cost function.
+      v <- sum((x - mu)^2) / n
+      if (v < .Machine$double.eps) v <- .Machine$double.eps
+      n * log(v) + n
+    },
+    {
+      sum((x - mu)^2)
+    }
+  )
+}
+
+#' Compute penalty value from penalty specification
+#'
+#' @param penalty Character: "bic", "aic", or "manual".
+#' @param penalty_value Numeric value for manual penalty (ignored otherwise).
+#' @param n Integer series length.
+#' @return Single numeric penalty value.
+#' @noRd
+changepoint_penalty_ <- function(penalty, penalty_value, n, type) {
+  # Number of parameters per changepoint: mean or variance = 2, both = 3
+  # Matches the changepoint package (Killick et al.) penalty computation
+  p <- ifelse_(type == "both", 3, 2)
+  switch(
+    penalty,
+    bic = p * log(n),
+    aic = 2 * p,
+    manual = {
+      if (is.null(penalty_value) || !is.numeric(penalty_value)) {
+        stop_(
+          "When {.arg penalty} is {.val manual},
+          {.arg penalty_value} must be a numeric value."
+        )
+      }
+      penalty_value
+    },
+    p * log(n)
+  )
+}
+
+#' Find the single best changepoint in a segment using likelihood ratio
+#'
+#' Scans all candidate split positions within `x` and returns the position
+#' that maximises the likelihood ratio (cost reduction). Returns NULL if no
+#' valid split exists.
+#'
+#' @param x Numeric vector.
+#' @param type Cost type.
+#' @param min_segment Minimum segment length.
+#' @return List with `pos` (best split position relative to x) and
+#'   `gain` (cost improvement), or NULL.
+#' @noRd
+changepoint_best_split_ <- function(x, type, min_segment) {
+  n <- length(x)
+  if (n < 2L * min_segment) {
+    return(NULL)
+  }
+  cost_full <- changepoint_cost_(x, type)
+  best_gain <- -Inf
+  best_pos <- NULL
+  candidates <- seq(min_segment, n - min_segment)
+  for (tau in candidates) {
+    left <- x[seq_len(tau)]
+    right <- x[(tau + 1L):n]
+    cost_split <- changepoint_cost_(left, type) +
+      changepoint_cost_(right, type)
+    gain <- cost_full - cost_split
+    if (gain > best_gain) {
+      best_gain <- gain
+      best_pos <- tau
+    }
+  }
+  list(pos = best_pos, gain = best_gain)
+}
+
+#' CUSUM statistic for a segment
+#'
+#' Computes cumulative sum of deviations from the segment mean.
+#' Returns the index of the maximum absolute CUSUM value.
+#'
+#' @param x Numeric vector.
+#' @return Integer index of maximum |CUSUM|.
+#' @noRd
+changepoint_cusum_stat_ <- function(x) {
+  n <- length(x)
+  mu <- mean(x)
+  cusum <- cumsum(x - mu)
+  which.max(abs(cusum))
+}
+
+#' CUSUM-based changepoint detection via binary segmentation
+#'
+#' Uses CUSUM to identify the most likely changepoint, then tests whether
+#' the split is worthwhile via a penalty-based likelihood ratio test.
+#' Recurses on both halves if the split is accepted.
+#'
+#' @param x Numeric vector.
+#' @param type Cost type.
+#' @param pen Penalty value.
+#' @param min_segment Minimum segment length.
+#' @param max_cp Maximum changepoints remaining (NULL = unlimited).
+#' @param offset Integer offset for converting local indices to global.
+#' @return Integer vector of global changepoint positions.
+#' @noRd
+changepoint_cusum_ <- function(x, type, pen, min_segment, max_cp, offset) {
+  n <- length(x)
+  if (n < 2L * min_segment) {
+    return(integer(0))
+  }
+  if (!is.null(max_cp) && max_cp <= 0L) {
+    return(integer(0))
+  }
+  # Find CUSUM-based candidate
+  tau <- changepoint_cusum_stat_(x)
+  if (tau < min_segment || (n - tau) < min_segment) {
+    return(integer(0))
+  }
+  # Check if split is worthwhile
+  cost_full <- changepoint_cost_(x, type)
+  left <- x[seq_len(tau)]
+  right <- x[(tau + 1L):n]
+  cost_split <- changepoint_cost_(left, type) +
+    changepoint_cost_(right, type)
+  gain <- cost_full - cost_split
+  if (gain <= pen) return(integer(0))
+  global_pos <- tau + offset
+  new_max <- onlyif(!is.null(max_cp), max_cp - 1L)
+  left_cp <- changepoint_cusum_(
+    left, type, pen, min_segment, new_max, offset
+  )
+  if (!is.null(new_max)) {
+    new_max <- new_max - length(left_cp)
+  }
+  right_cp <- changepoint_cusum_(
+    right, type, pen, min_segment, new_max, offset + tau
+  )
+  sort(c(left_cp, global_pos, right_cp))
+}
+
+#' Binary segmentation changepoint detection
+#'
+#' Iteratively finds the best single split and recurses if the gain
+#' exceeds the penalty.
+#'
+#' @param x Numeric vector.
+#' @param type Cost type.
+#' @param pen Penalty value.
+#' @param min_segment Minimum segment length.
+#' @param max_cp Maximum changepoints remaining.
+#' @param offset Integer offset for global indexing.
+#' @return Integer vector of global changepoint positions.
+#' @noRd
+changepoint_binseg_ <- function(x, type, pen, min_segment, max_cp, offset) {
+  n <- length(x)
+  if (n < 2L * min_segment) {
+    return(integer(0))
+  }
+  if (!is.null(max_cp) && max_cp <= 0L) {
+    return(integer(0))
+  }
+  result <- changepoint_best_split_(x, type, min_segment)
+  if (result$gain <= pen) return(integer(0))
+  tau <- result$pos
+  global_pos <- tau + offset
+  new_max <- onlyif(!is.null(max_cp), max_cp - 1L)
+  left <- x[seq_len(tau)]
+  left_cp <- changepoint_binseg_(
+    left, type, pen, min_segment, new_max, offset
+  )
+  if (!is.null(new_max)) {
+    new_max <- new_max - length(left_cp)
+  }
+  right <- x[(tau + 1L):n]
+  right_cp <- changepoint_binseg_(
+    right, type, pen, min_segment, new_max, offset + tau
+  )
+  sort(c(left_cp, global_pos, right_cp))
+}
+
+#' PELT changepoint detection
+#'
+#' Pruned Exact Linear Time algorithm. Uses dynamic programming with
+#' pruning to find the exact optimal segmentation under a penalised
+#' cost criterion.
+#'
+#' @param x Numeric vector.
+#' @param type Cost type.
+#' @param pen Penalty value.
+#' @param min_segment Minimum segment length.
+#' @param max_cp Maximum number of changepoints (NULL = unlimited).
+#' @return Integer vector of changepoint positions.
+#' @noRd
+changepoint_pelt_ <- function(x, type, pen, min_segment, max_cpt) {
+
+  n <- length(x)
+  if (n < 2L * min_segment) {
+    return(integer(0))
+  }
+  # F[t+1] = optimal cost for data 1..t (0-indexed: F[1] = cost for 0 data)
+  f_cost <- rep(Inf, n + 1L)
+  f_cost[1L] <- -pen  # F(0) = -beta so F(0) + C(0+1..t) + beta = C(1..t)
+  cpt_trace <- vector("list", n + 1L)
+  cpt_trace[[1L]] <- integer(0)
+  # R: set of candidate last changepoints (0-indexed positions)
+  candidates <- 0L
+  for (t_star in seq_len(n)) {
+    best_cost <- Inf
+    best_tau <- 0L
+    # First pass: find optimal cost
+    cost_vals <- numeric(length(candidates))
+    valid_mask <- logical(length(candidates))
+    for (ci in seq_along(candidates)) {
+      tau <- candidates[ci]
+      seg_start <- tau + 1L
+      seg_end <- t_star
+      seg_len <- seg_end - seg_start + 1L
+      if (seg_len < min_segment) {
+        valid_mask[ci] <- FALSE
+        cost_vals[ci] <- Inf
+        next
+      }
+      valid_mask[ci] <- TRUE
+      seg <- x[seg_start:seg_end]
+      cost_vals[ci] <- f_cost[tau + 1L] + changepoint_cost_(seg, type) + pen
+      if (cost_vals[ci] < best_cost) {
+        best_cost <- cost_vals[ci]
+        best_tau <- tau
+      }
+    }
+    f_cost[t_star + 1L] <- best_cost
+    # Reconstruct changepoint list
+    prev_cpts <- cpt_trace[[best_tau + 1L]]
+    if (best_tau > 0L) {
+      cpt_trace[[t_star + 1L]] <- c(prev_cpts, best_tau)
+    } else {
+      cpt_trace[[t_star + 1L]] <- prev_cpts
+    }
+    # PELT pruning: keep candidates where F(tau) + C(tau+1..t) + pen <= F(t)
+    # Candidates with segments too short are always kept (may become valid later)
+    prune_keep <- integer(0)
+    for (ci in seq_along(candidates)) {
+      if (!valid_mask[ci] || cost_vals[ci] <= best_cost + pen) {
+        prune_keep <- c(prune_keep, candidates[ci])
+      }
+    }
+    # Add current t_star as a candidate
+    candidates <- unique(c(prune_keep, t_star))
+  }
+  cpts <- cpt_trace[[n + 1L]]
+  if (length(cpts) == 0L) {
+    return(integer(0))
+  }
+  cpts <- sort(unique(cpts))
+  # Enforce max_changepoints
+  if (!is.null(max_cpt) && length(cpts) > max_cpt) {
+    gains <- vapply(
+      cpts,
+      function(cpt) {
+        # Estimate gain by removing this changepoint
+        seg_before_start <- ifelse_(
+          cpt == cpts[1L],
+          1L,
+          cpts[which(cpts == cpt) - 1L] + 1L
+        )
+        seg_after_end <- ifelse_(
+          cpt == cpts[length(cpts)],
+          n,
+          cpts[which(cpts == cpt) + 1L]
+        )
+        left <- x[seg_before_start:cpt]
+        right <- x[(cpt + 1L):seg_after_end]
+        combined <- x[seg_before_start:seg_after_end]
+        changepoint_cost_(combined, type) -
+          (changepoint_cost_(left, type) + changepoint_cost_(right, type))
+      },
+      numeric(1)
+    )
+    keep_idx <- order(gains, decreasing = TRUE)[seq_len(max_cpt)]
+    cpts <- sort(cpts[keep_idx])
+  }
+  cpts
+}
+
+#' Color palette for changepoint regime states
+#'
+#' Named colors for the 9 possible level x changepoint_type combinations.
+#' @noRd
+changepoint_colors_ <- function() {
+  c(
+    high_initial = "#E53935",
+    high_change = "#C62828",
+    high_return = "#EF5350",
+    medium_initial = "#FFA726",
+    medium_change = "#F57C00",
+    medium_return = "#FFCC80",
+    low_initial = "#43A047",
+    low_change = "#2E7D32",
+    low_return = "#66BB6A"
+  )
+}
+
+#' Classify changepoint segments into meaningful regime labels
+#'
+#' Groups segments with similar means into shared regimes, classifies
+#' each segment by level (high/medium/low) and direction (higher/lower),
+#' and labels changepoints as "change" (new regime) or "return" (revisit).
+#'
+#' @param seg_means Numeric vector of per-segment means.
+#' @param overall_mean Numeric, global series mean.
+#' @param overall_sd Numeric, global series SD.
+#' @return List with: regime (integer), level (character),
+#'   direction (character), magnitude (numeric),
+#'   changepoint_type (character), state (character).
+#'   Each vector has length equal to number of segments.
+#' @noRd
+changepoint_classify_ <- function(seg_means, overall_mean, overall_sd) {
+  n <- length(seg_means)
+  threshold <- 0.5 * overall_sd
+  regime <- integer(n)
+  regime_means <- numeric(0)
+  regime[1L] <- 1L
+  regime_means[1L] <- seg_means[1L]
+  if (n > 1L) {
+    for (i in 2:n) {
+      dists <- abs(seg_means[i] - regime_means)
+      closest <- which.min(dists)
+      if (dists[closest] <= threshold) {
+        regime[i] <- closest
+        regime_means[closest] <- mean(
+          seg_means[regime[seq_len(i)] == closest]
+        )
+      } else {
+        new_id <- length(regime_means) + 1L
+        regime[i] <- new_id
+        regime_means[new_id] <- seg_means[i]
+      }
+    }
+  }
+  level <- vapply(
+    seg_means,
+    function(m) {
+      if (m > overall_mean + 0.5 * overall_sd) {
+        return("high")
+      }
+      if (m < overall_mean - 0.5 * overall_sd) {
+        return("low")
+      }
+      "medium"
+    },
+    character(1L)
+  )
+  direction <- rep(NA_character_, n)
+  magnitude <- rep(NA_real_, n)
+  if (n > 1L) {
+    for (i in 2:n) {
+      mag <- seg_means[i] - seg_means[i - 1L]
+      magnitude[i] <- mag
+      direction[i] <- if (mag > 0.1 * overall_sd) {
+        "higher"
+      } else if (mag < -0.1 * overall_sd) {
+        "lower"
+      } else {
+        "no_change"
+      }
+    }
+  }
+  changepoint_type <- rep(NA_character_, n)
+  seen_regimes <- regime[1L]
+  if (n > 1L) {
+    for (i in 2:n) {
+      if (regime[i] %in% seen_regimes) {
+        changepoint_type[i] <- "return"
+      } else {
+        changepoint_type[i] <- "change"
+        seen_regimes <- c(seen_regimes, regime[i])
+      }
+    }
+  }
+  cpt_for_state <- changepoint_type
+  cpt_for_state[is.na(cpt_for_state)] <- "initial"
+  state <- paste0(level, "_", cpt_for_state)
+  list(
+    regime = regime,
+    level = level,
+    direction = direction,
+    magnitude = magnitude,
+    changepoint_type = changepoint_type,
+    state = state
+  )
 }
