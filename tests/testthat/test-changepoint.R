@@ -131,7 +131,7 @@ test_that("manual penalty without penalty_value errors", {
 
 test_that("print does not error", {
   result <- detect_cpts(cpt_data)
-  capture.output(print(result)) |>
+  utils::capture.output(print(result)) |>
     expect_error(NA)
 })
 
@@ -148,7 +148,7 @@ test_that("summary does not error", {
 test_that("summary print does not error", {
   result <- detect_cpts(cpt_data)
   sumr <- summary(result)
-  capture.output(print(sumr)) |>
+  utils::capture.output(print(sumr)) |>
     expect_error(NA)
   expect_type(sumr, "list")
 })
@@ -415,7 +415,7 @@ test_that("summary returns change details when changepoints exist", {
   set.seed(0)
   x <- c(rnorm(100, 0, 1), rnorm(100, 5, 1))
   result <- detect_cpts(x, method = "pelt")
-  out <- capture.output(s <- summary(result))
+  out <- utils::capture.output(s <- summary(result))
   expect_true("changes" %in% names(s))
   expect_true(is.data.frame(s$changes))
   expect_true(nrow(s$changes) > 0L)
@@ -430,7 +430,7 @@ test_that("summary with no changepoints returns NULL changes", {
   set.seed(0)
   x <- rnorm(100)
   result <- detect_cpts(x, penalty = "manual", penalty_value = 1e6)
-  out <- capture.output(s <- summary(result))
+  out <- utils::capture.output(s <- summary(result))
   expect_null(s$changes)
 })
 

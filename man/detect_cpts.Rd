@@ -162,10 +162,10 @@ objects.
 # Mean shift at t = 200
 set.seed(42)
 x <- c(rnorm(200, 0, 1), rnorm(200, 5, 1))
-cp <- detect_cpts(x, method = "pelt")
-cp
-summary(cp)
-plot(cp)
+cpts <- detect_cpts(x, method = "pelt")
+cpts
+summary(cpts)
+plot(cpts)
 
 # Multiple changepoints
 set.seed(123)
