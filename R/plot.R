@@ -22,10 +22,10 @@
 #' panel below using [patchwork::wrap_plots()], with shared time axes.
 #'
 #' @export
-#' @param x \[`changepoint`\]\cr
+#' @param x \[`changepoint`]\cr
 #'   An object of class `changepoint` as returned by
 #'   [detect_cpts()].
-#' @param type \[`character(1)`: `"series"`\]\cr
+#' @param type \[`character(1)`: `"series"`]\cr
 #'   Plot type: `"series"` for colored segments with changepoint lines,
 #'   `"diagnostics"` for segment mean step function, or `"both"` for
 #'   both panels stacked.
@@ -719,9 +719,9 @@ plot_patterns_group <- function(x, n, group, global) {
 #' suppresses its x-axis labels to avoid duplication.
 #'
 #' @export
-#' @param x \[`hurst`\]\cr
+#' @param x \[`hurst`]\cr
 #'   An object of class `hurst`.
-#' @param type \[`character(1)`: `"both"`\]\cr
+#' @param type \[`character(1)`: `"both"`]\cr
 #'   Plot type. The available options are:
 #'
 #'   * `"series"`: Time series with state-colored background.
@@ -915,10 +915,10 @@ plot.hurst <- function(x, type = "both", ...) {
 #' for presentation.
 #'
 #' @export
-#' @param x \[`hurst_ews`\]\cr
+#' @param x \[`hurst_ews`]\cr
 #'   An object of class `hurst_ews` as returned by
 #'   [detect_hurst_warnings()].
-#' @param indicators \[`character()`\]\cr
+#' @param indicators \[`character()`]\cr
 #'   Which indicators to display in the heatmap panel. Defaults to all
 #'   10 indicators.
 #' @param ... Additional arguments (currently unused).
@@ -1150,4 +1150,549 @@ build_warning_rects_ <- function(x) {
     pos <- run_end + 1L
   }
   rects
+}
+
+#' Plot Multivariate EWS Results
+#'
+#' Creates a multi-panel visualization of multivariate early warning signal
+#' analysis results. For expanding windows, shows the standardized metric
+#' strengths with threshold lines and a system-state classification ribbon.
+#' For rolling windows, shows faceted metric trends with Kendall's tau
+#' annotations. Both methods optionally include a dimension-reduction panel
+#' showing MAF1 and PC1 trajectories.
+#'
+#' @details
+#' **Expanding window layout** (top to bottom):
+#'
+#'   1. Dimension reduction panel (MAF1 + PC1) with warning points.
+#'   2. Standardized metric strengths with threshold line(s); points
+#'      mark individual metric threshold crossings.
+#'   3. System-state classification ribbon (Stable through Failing).
+#'
+#' **Rolling window layout**:
+#'
+#' 1. Dimension reduction panel (MAF1 + PC1) with warning points.
+#' 2. Faceted panels per metric showing standardized EWS values;
+#'    panel titles include Kendall's tau trend statistic.
+#'
+#' @export
+#' @param x \[`multi_ews`]\cr
+#'   An object of class `"multi_ews"` produced by
+#'   [detect_multivariate_warnings()].
+#' @param include_dr \[`logical(1)`: `TRUE`]\cr
+#'   Whether to include the dimension reduction (MAF1/PC1) panel.
+#' @param ... Additional arguments (currently unused).
+#' @return A [ggplot2::ggplot()] or [patchwork::wrap_plots()] object.
+#' @seealso [detect_multivariate_warnings()] for computing the EWS.
+#' @family multivariate EWS
+#' @concept early warning signals
+#' @examples
+#' \donttest{
+#' tip <- generate_tipping_data(n_time = 100, n_vars = 3, tipping_point = 60)
+#' ews <- detect_multivariate_warnings(tip, method = "expanding", window = 50)
+#' plot(ews)
+#' plot(ews, include_dr = FALSE)
+#' }
+plot.multi_ews <- function(x, include_dr = TRUE, ...) {
+  check_missing(x)
+  check_class(x, "multi_ews")
+  check_flag(include_dr)
+  method <- attr(x, "method")
+  ifelse_(
+    method == "expanding",
+    mews_plot_expanding_(x, include_dr),
+    mews_plot_rolling_(x, include_dr)
+  )
+}
+
+#' @noRd
+mews_theme <- function(base_size = 11L) {
+  ggplot2::theme_bw(base_size = base_size) +
+    ggplot2::theme(
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.grid.major.x = ggplot2::element_blank(),
+      panel.grid.major.y = ggplot2::element_line(
+        colour = "grey90",
+        linetype = "dashed"
+      ),
+      panel.background = ggplot2::element_rect(fill = "white"),
+      panel.border = ggplot2::element_blank(),
+      axis.line = ggplot2::element_line(colour = "black"),
+      strip.background = ggplot2::element_rect(
+        fill = "grey95",
+        colour = "grey95",
+        linewidth = 0.5
+      ),
+      strip.text = ggplot2::element_text(
+        face = "bold",
+        margin = ggplot2::margin(
+        5, 0, 5, 0)
+      ),
+      plot.title = ggplot2::element_text(
+        face = "bold",
+        size = ggplot2::rel(1.2),
+        hjust = 0
+      ),
+      plot.subtitle = ggplot2::element_text(
+        color = "grey40",
+        size = ggplot2::rel(0.9)
+      ),
+      legend.position = "left",
+      legend.key = ggplot2::element_rect(fill = "white", colour = NA)
+    )
+}
+
+
+mews_state_colors <- function() {
+  c(
+    "Stable"     = "#440154FF",
+    "Vulnerable" = "#3B528BFF",
+    "Warning"    = "#21908CFF",
+    "Critical"   = "#5DC863FF",
+    "Failing"    = "#FDE725FF"
+  )
+}
+
+mews_plot_expanding_ <- function(ews_object, include_dr) {
+  classification_data <- attr(ews_object, "classification")
+  state_colors <- mews_state_colors()
+  if (!is.null(classification_data)) {
+    classification_data$state <- factor(
+      classification_data$state, levels = names(state_colors)
+    )
+  }
+  # Main metric strength plot
+  p <- ggplot2::ggplot(
+    ews_object,
+    ggplot2::aes(
+      x = !!rlang::sym("time"),
+      y = !!rlang::sym("z_score"),
+      color = !!rlang::sym("metric")
+    )
+  ) +
+    ggplot2::geom_line(alpha = 0.8) +
+    ggplot2::geom_point(
+      data  = function(d) d[d$detected == 1L, ],
+      ggplot2::aes(color = !!rlang::sym("metric")),
+      size  = 3.5,
+      shape = 19,
+      alpha = 0.8
+    ) +
+    ggplot2::geom_hline(
+      yintercept = attr(ews_object, "threshold"),
+      linetype = "dashed",
+      color = "grey50"
+    )
+  if (attr(ews_object, "tail_direction") == "two.tailed") {
+    p <- p + ggplot2::geom_hline(
+      yintercept = -attr(ews_object, "threshold"),
+      linetype = "dashed",
+      color = "grey50"
+    )
+  }
+  p <- p +
+    ggplot2::labs(
+      title = "Multivariate Early Warning Signals (Expanding Window)",
+      subtitle = "Points indicate metric strength crossing the threshold.",
+      y = "Strength of EWS",
+      x = NULL,
+      color = "EWS Indicator"
+    ) +
+    ggplot2::guides(
+      color = ggplot2::guide_legend(
+        override.aes = list(shape = 19, size = 3)
+      )
+    ) +
+    mews_theme() +
+    ggplot2::theme(
+      axis.text.x  = ggplot2::element_blank(),
+      axis.ticks.x = ggplot2::element_blank()
+    )
+  # Dimension reduction panel
+  if (include_dr && !is.null(attr(ews_object, "dimension_reduction"))) {
+    p_dr <- mews_plot_dr_(ews_object)
+    if (!is.null(classification_data)) {
+      p_ribbon <- mews_plot_ribbon_(classification_data, state_colors)
+      patchwork::wrap_plots(
+        p_dr, p, p_ribbon,
+        ncol = 1L,
+        heights = c(2, 4, 1)
+      )
+    } else {
+      patchwork::wrap_plots(p_dr, p, ncol = 1L, heights = c(2, 4))
+    }
+  } else {
+    if (!is.null(classification_data)) {
+      p_ribbon <- mews_plot_ribbon_(classification_data, state_colors)
+      patchwork::wrap_plots(p, p_ribbon, ncol = 1L, heights = c(4, 1))
+    } else {
+      p + ggplot2::labs(x = "Time Point")
+    }
+  }
+}
+
+mews_plot_rolling_ <- function(ews_object, include_dr) {
+  # Build correlation labels
+  cor_vals <- attr(ews_object, "cor")
+  cor_names <- sub("\\.tau$", "", names(cor_vals))
+  cor_data <- data.frame(
+    metric = cor_names,
+    tau = round(cor_vals, 2L),
+    stringsAsFactors = FALSE
+  )
+  cor_data$label <- paste0(cor_data$metric, ": tau=", cor_data$tau)
+  plot_data <- merge(as.data.frame(ews_object), cor_data, by = "metric")
+  p <- ggplot2::ggplot(
+    plot_data,
+    ggplot2::aes(
+      x = !!rlang::sym("time"),
+      y = !!rlang::sym("std"),
+      color = !!rlang::sym("metric")
+    )
+  ) +
+    ggplot2::geom_line(alpha = 0.8, linewidth = 0.5) +
+    ggplot2::facet_wrap(
+      ggplot2::vars(!!rlang::sym("label")),
+      scales = "free_y"
+    ) +
+    ggplot2::labs(
+      title  = "Multivariate Early Warning Signals (Rolling Window)",
+      subtitle = paste0(
+        "Each panel shows the trend of an EWS metric.",
+        " Kendall's tau indicates trend strength."
+      ),
+      y = "Standardized EWS",
+      x = onlyif(!include_dr, "Time Point")
+    ) +
+    mews_theme() +
+    ggplot2::theme(
+      legend.position  = "none",
+      strip.background = ggplot2::element_blank(),
+      strip.text       = ggplot2::element_text(size = 8)
+    )
+
+  if (include_dr) {
+    p <- p + ggplot2::theme(
+      axis.text.x  = ggplot2::element_blank(),
+      axis.ticks.x = ggplot2::element_blank()
+    )
+  }
+  if (include_dr && !is.null(attr(ews_object, "dimension_reduction"))) {
+    p_dr <- mews_plot_dr_(ews_object) +
+      ggplot2::theme(legend.position = "right")
+    patchwork::wrap_plots(p_dr, p, ncol = 1L, heights = c(2, 3.5))
+  } else {
+    p
+  }
+}
+
+mews_plot_dr_ <- function(ews_object) {
+  dr_data <- attr(ews_object, "dimension_reduction")
+  stopifnot_(
+    !is.null(dr_data),
+    "No dimension reduction data found in {.arg ews_object}."
+  )
+  plot_df <- tidyr::pivot_longer(
+    dr_data,
+    cols      = c(
+      !!rlang::sym("maf1_scaled"),
+      !!rlang::sym("pc1_scaled")
+    ),
+    names_to  = "dimension",
+    values_to = "scaled_value"
+  )
+  plot_df$dimension <- ifelse(
+    plot_df$dimension == "maf1_scaled", "MAF1", "PC1"
+  )
+  plot_df$warning <- ifelse(
+    plot_df$dimension == "MAF1",
+    plot_df$maf1_warning,
+    plot_df$pc1_warning
+  )
+  y_vals <- plot_df$scaled_value[!is.na(plot_df$scaled_value)]
+  if (length(y_vals) > 0L) {
+    y_range  <- range(y_vals, na.rm = TRUE)
+    y_buffer <- diff(y_range) * 0.05
+    y_min    <- max(y_range[1L] - y_buffer, -6)
+    y_max    <- min(y_range[2L] + y_buffer,  6)
+  } else {
+    y_min <- -4
+    y_max <-  4
+  }
+  ggplot2::ggplot(
+    plot_df,
+    ggplot2::aes(
+      x     = !!rlang::sym("time"),
+      y     = !!rlang::sym("scaled_value"),
+      color = !!rlang::sym("dimension")
+    )
+  ) +
+    ggplot2::geom_line(alpha = 0.8, linewidth = 1) +
+    ggplot2::geom_point(
+      data  = function(d) d[d$warning == TRUE, ],
+      ggplot2::aes(
+        x     = !!rlang::sym("time"),
+        y     = !!rlang::sym("scaled_value"),
+        color = !!rlang::sym("dimension")
+      ),
+      size  = 3,
+      alpha = 0.8
+    ) +
+    ggplot2::coord_cartesian(ylim = c(y_min, y_max)) +
+    ggplot2::labs(
+      title    = "Dimension Reduction Time Series",
+      subtitle = "MAF1 and PC1 components with warning points highlighted",
+      y        = "Scaled Component Value",
+      x        = "Time Point",
+      color    = "Component"
+    ) +
+    ggplot2::scale_color_manual(
+      values = c("MAF1" = "#3B82F6", "PC1" = "#F59E0B")
+    ) +
+    mews_theme() +
+    ggplot2::theme(
+      legend.position    = "left",
+      panel.grid.minor   = ggplot2::element_blank(),
+      panel.grid.major.x = ggplot2::element_blank()
+    )
+}
+
+mews_plot_ribbon_ <- function(classification_data, state_colors) {
+  ggplot2::ggplot(
+    classification_data,
+    ggplot2::aes(x = !!rlang::sym("time"), y = 1)
+  ) +
+    ggplot2::geom_tile(
+      ggplot2::aes(fill = !!rlang::sym("state")),
+      height = 1
+    ) +
+    ggplot2::scale_fill_manual(
+      values = state_colors,
+      name   = "System State",
+      drop   = FALSE
+    ) +
+    ggplot2::labs(x = "Time Point", y = "") +
+    mews_theme() +
+    ggplot2::theme(
+      axis.text.y = ggplot2::element_blank(),
+      axis.ticks.y = ggplot2::element_blank(),
+      panel.grid.major.y = ggplot2::element_blank()
+    )
+}
+
+
+#' Plot Potential Analysis Results
+#'
+#' Visualizes the estimated potential landscape, probability density, or
+#' both. Wells are marked as points and barriers as vertical dashed lines.
+#'
+#' @details
+#' Three plot types are available:
+#'
+#' **`type = "landscape"` (default).** Plots the quasi-potential
+#' \eqn{U(x) = -\log P(x)} as a function of state-space position
+#' \eqn{x}. Wells (local minima) are shown as blue points and barriers
+#' (local maxima) as red vertical dashed lines. This view directly shows
+#' the stability landscape: valleys are stable attractors, peaks are
+#' unstable equilibria, and the depth of each valley relative to the
+#' nearest peak quantifies how resilient each attractor is to
+#' perturbations.
+#'
+#' **`type = "density"`.** Plots the kernel density estimate \eqn{P(x)}.
+#' Peaks in density correspond to wells in potential and vice versa. This
+#' view is useful for checking the quality of the density estimate and
+#' confirming that the identified attractors correspond to genuine modes
+#' in the data distribution.
+#'
+#' **`type = "both"`.** Stacks the density plot on top and the potential
+#' landscape below using [patchwork::wrap_plots()]. The shared x-axis
+#' makes it easy to see how features in density map to features in
+#' potential.
+#'
+#' When the object contains rolling-window results (i.e., `window` was
+#' specified), an additional panel showing the number of wells over time
+#' is appended below the landscape panel(s).
+#'
+#' @export
+#' @param x \[`potential`\]\cr
+#'   An object of class `potential` as returned by [potential_analysis()].
+#' @param type \[`character(1)`: `"landscape"`\]\cr
+#'   Plot type: `"landscape"`, `"density"`, or `"both"`.
+#' @param ... Additional arguments (currently unused).
+#' @return A [ggplot2::ggplot()] object (or a
+#'   [patchwork::wrap_plots()] composite when `type = "both"` or when
+#'   rolling results are present).
+#'
+#' @seealso [potential_analysis()] for computing the potential landscape.
+#' @examples
+#' \donttest{
+#' set.seed(42)
+#' bimodal <- c(rnorm(1000, -2, 0.5), rnorm(1000, 2, 0.5))
+#' pa <- potential_analysis(bimodal)
+#' plot(pa, type = "landscape")
+#' plot(pa, type = "density")
+#' plot(pa, type = "both")
+#' }
+plot.potential <- function(x, type = "landscape", ...) {
+  check_missing(x)
+  check_class(x, "potential")
+  type <- check_match(type, c("landscape", "density", "both"))
+  colors <- potential_colors_()
+  landscape <- x$landscape
+  wells <- x$wells
+  barriers <- x$barriers
+  panels <- list()
+  if (type == "density" || type == "both") {
+    p_density <- ggplot2::ggplot(
+      landscape,
+      ggplot2::aes(x = !!rlang::sym("x"), y = !!rlang::sym("density"))
+    ) +
+      ggplot2::geom_line(
+        linewidth = 0.7,
+        color = colors["density"]
+      ) +
+      ggplot2::geom_area(
+        alpha = 0.15,
+        fill = colors["density"]
+      )
+    if (nrow(barriers) > 0L) {
+      p_density <- p_density +
+        ggplot2::geom_vline(
+          xintercept = barriers$location,
+          linetype = "dashed",
+          color = colors["barrier"],
+          linewidth = 0.5
+        )
+    }
+    p_density <- p_density +
+      ggplot2::labs(
+        title = "Probability Density Estimate",
+        x = ifelse_(type == "both", NULL, "State (x)"),
+        y = "Density P(x)"
+      ) +
+      ggplot2::theme_minimal() +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(size = 13, face = "bold"),
+        axis.title = ggplot2::element_text(color = "black", face = "bold"),
+        axis.text = ggplot2::element_text(color = "black")
+      )
+    if (type == "both") {
+      p_density <- p_density +
+        ggplot2::theme(
+          axis.text.x = ggplot2::element_blank(),
+          axis.ticks.x = ggplot2::element_blank()
+        )
+    }
+    if (type == "density") {
+      return(p_density)
+    }
+    panels <- c(panels, list(p_density))
+  }
+  if (type == "landscape" || type == "both") {
+    p_potential <- ggplot2::ggplot(
+      landscape,
+      ggplot2::aes(x = !!rlang::sym("x"), y = !!rlang::sym("potential"))
+    ) +
+      ggplot2::geom_line(
+        linewidth = 0.7,
+        color = colors["potential"]
+      )
+    # Mark wells
+    if (nrow(wells) > 0L) {
+      # Find potential values at well locations via interpolation
+      well_potential <- stats::approx(
+        landscape$x, landscape$potential,
+        xout = wells$location, rule = 2
+      )$y
+      well_df <- data.frame(
+        x = wells$location,
+        y = well_potential
+      )
+      p_potential <- p_potential +
+        ggplot2::geom_point(
+          data = well_df,
+          ggplot2::aes(
+            x = !!rlang::sym("x"),
+            y = !!rlang::sym("y")
+          ),
+          color = colors["well"],
+          size = 3,
+          shape = 19,
+          inherit.aes = FALSE
+        )
+    }
+    if (nrow(barriers) > 0L) {
+      p_potential <- p_potential +
+        ggplot2::geom_vline(
+          xintercept = barriers$location,
+          linetype = "dashed",
+          color = colors["barrier"],
+          linewidth = 0.5
+        )
+    }
+    p_potential <- p_potential +
+      ggplot2::labs(
+        title = ifelse_(
+          type == "both",
+          "Potential Landscape",
+          "Stability Landscape: Potential U(x) = -log P(x)"
+        ),
+        x = "State (x)",
+        y = "Potential U(x)"
+      ) +
+      ggplot2::theme_minimal() +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(size = 13, face = "bold"),
+        axis.title = ggplot2::element_text(color = "black", face = "bold"),
+        axis.text = ggplot2::element_text(color = "black")
+      )
+
+    if (type == "landscape" && is.null(x$rolling)) {
+      return(p_potential)
+    }
+    panels <- c(panels, list(p_potential))
+  }
+  if (!is.null(x$rolling)) {
+    rolling <- x$rolling
+    p_rolling <- ggplot2::ggplot(
+      rolling,
+      ggplot2::aes(
+        x = !!rlang::sym("time"),
+        y = !!rlang::sym("n_wells")
+      )
+    ) +
+      ggplot2::geom_step(linewidth = 0.6, color = "#2196F3") +
+      ggplot2::scale_y_continuous(
+        breaks = function(lims) {
+          seq(floor(lims[1L]), ceiling(lims[2L]), by = 1L)
+        }
+      ) +
+      ggplot2::labs(
+        title = "Number of Wells Over Time",
+        x = "Time",
+        y = "Number of Wells"
+      ) +
+      ggplot2::theme_minimal() +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(size = 13, face = "bold"),
+        axis.title = ggplot2::element_text(color = "black", face = "bold"),
+        axis.text = ggplot2::element_text(color = "black")
+      )
+    panels <- c(panels, list(p_rolling))
+  }
+  if (length(panels) == 1L) {
+    return(panels[[1L]])
+  }
+  patchwork::wrap_plots(panels, ncol = 1L)
+}
+
+#' Colour palette for potential landscape plots
+#' @noRd
+potential_colors_ <- function() {
+  c(
+    well = "#2196F3",
+    barrier = "#F44336",
+    potential = "#333333",
+    density = "#4CAF50"
+  )
 }

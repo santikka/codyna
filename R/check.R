@@ -32,14 +32,9 @@ check_flag <- function(x) {
 #' @noRd
 check_match <- function(x, choices, several.ok = FALSE) {
   arg <- deparse(substitute(x))
-  x <- onlyif(is.character(x), tolower(x))
   x <- try_(match.arg(arg = x, choices = choices, several.ok = several.ok))
   n_choices <- length(choices)
-  prefix <- ifelse_(
-    several.ok,
-    "Elements of",
-    "Argument"
-  )
+  prefix <- ifelse_(several.ok, "Elements of", "Argument")
   stopifnot_(
     !inherits(x, "try-error"),
     "{prefix} {.arg {arg}} must be either
@@ -111,8 +106,7 @@ check_string <- function(x) {
 #' @param scalar A `logical` value indicating if `x` should be expected
 #' to be a single value.
 #' @noRd
-check_values <- function(x, type = "integer", strict = FALSE,
-                         scalar = TRUE) {
+check_values <- function(x, type = "integer", strict = FALSE, scalar = TRUE) {
   arg <- deparse(substitute(x))
   suffix <- ifelse_(
     scalar,

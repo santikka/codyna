@@ -58,9 +58,9 @@
 #' and (3) linear interpolation for any internal gaps.
 #'
 #' @export
-#' @param data \[`ts`, `numeric()`\]\cr
+#' @param data \[`ts`, `numeric()`]\cr
 #'   Univariate time series data.
-#' @param method \[`character(1)`: `"dfa"`\]\cr
+#' @param method \[`character(1)`: `"dfa"`]\cr
 #'   Hurst estimation method. The available options are:
 #'
 #'   * `"dfa"`: Detrended Fluctuation Analysis -- robust to
@@ -69,24 +69,24 @@
 #'     range-over-standard-deviation scaling.
 #'   * `"mfdfa"`: Multifractal DFA -- extends DFA to characterize the
 #'     full multifractal spectrum via generalized Hurst exponents.
-#' @param window \[`integer(1)`: `50L`\]\cr
+#' @param window \[`integer(1)`: `50L`]\cr
 #'   Rolling window size for local Hurst estimation when `states = TRUE`.
-#' @param step \[`integer(1)`: `1L`\]\cr
+#' @param step \[`integer(1)`: `1L`]\cr
 #'   Step size between consecutive windows.
-#' @param scaling \[`character(1)`: `"none"`\]\cr
+#' @param scaling \[`character(1)`: `"none"`}\cr
 #'   Preprocessing applied to the data. The available options are:
 #'   `"none"`, `"center"`, `"standardize"`, `"minmax"`, and `"iqr"`.
-#' @param min_scale \[`integer(1)`: `4L`\]\cr
+#' @param min_scale \[`integer(1)`: `4L`]\cr
 #'   Minimum box size for the DFA/R/S log-log regression.
-#' @param max_scale \[`integer(1)`: `NULL`\]\cr
+#' @param max_scale \[`integer(1)`: `NULL`]\cr
 #'   Maximum box size. If `NULL`, defaults to `floor(n / 4)` for DFA/MFDFA
 #'   or `floor(n / 2)` for R/S.
-#' @param n_scales \[`integer(1)`: `10L`\]\cr
+#' @param n_scales \[`integer(1)`: `10L`]\cr
 #'   Number of scales (box sizes) to evaluate between `min_scale` and
 #'   `max_scale` on a logarithmic grid.
-#' @param q \[`numeric()`: `seq(-5, 5, 0.5)`\]\cr
+#' @param q \[`numeric()`: `seq(-5, 5, 0.5)`]\cr
 #'   Vector of moment orders for MFDFA. Only used when `method = "mfdfa"`.
-#' @param states \[`logical(1)`: `TRUE`\]\cr
+#' @param states \[`logical(1)`: `TRUE`]\cr
 #'   If `TRUE`, compute rolling Hurst values with state classification.
 #'   If `FALSE`, compute a single global Hurst estimate.
 #' @return
@@ -295,323 +295,6 @@ hurst <- function(data, method = "dfa", window = 50L, step = 1L,
   )
 }
 
-#' @noRd
-hurst_scale <- function(x, scaling) {
-  switch(
-    scaling,
-    none = x,
-    center = x - mean(x, na.rm = TRUE),
-    standardize = {
-      s <- stats::sd(x, na.rm = TRUE)
-      ifelse_(
-        s == 0,
-        x - mean(x, na.rm = TRUE),
-        (x - mean(x, na.rm = TRUE)) / s
-      )
-    },
-    minmax = {
-      mn <- min(x, na.rm = TRUE)
-      mx <- max(x, na.rm = TRUE)
-      rng <- mx - mn
-      ifelse_(
-        rng == 0,
-        rep(0.5, length(x)),
-        (x - mn) / rng
-      )
-    },
-    iqr = {
-      q <- stats::quantile(x, c(0.25, 0.75), na.rm = TRUE)
-      iqr_val <- q[2L] - q[1L]
-      if (iqr_val == 0) x - stats::median(x, na.rm = TRUE)
-      else (x - stats::median(x, na.rm = TRUE)) / iqr_val
-    }
-  )
-}
-
-#' @noRd
-hurst_dfa <- function(x, min_scale, max_scale, n_scales) {
-  # Matches Resilience4 .calculate_hurst_dfa() exactly
-  x <- x[!is.na(x)]
-  n <- length(x)
-  if (n < 2L * min_scale) {
-    return(
-      list(
-        hurst = NA_real_,
-        r_squared = NA_real_,
-        scales = integer(0),
-        fluctuations = numeric(0)
-      )
-    )
-  }
-  min_scale <- max(4L, min_scale)
-  if (is.null(max_scale)) {
-    max_scale <- floor(n / 4)
-  } else if (max_scale > n / 2) {
-    max_scale <- floor(n / 4)
-  }
-  if (max_scale <= min_scale) {
-    return(
-      list(
-        hurst = NA_real_,
-        r_squared = NA_real_,
-        scales = integer(0),
-        fluctuations = numeric(0)
-      )
-    )
-  }
-  # Logarithmically spaced scales with round() (not floor)
-  log_sc <- seq(log(min_scale), log(max_scale), length.out = n_scales)
-  scales <- unique(round(exp(log_sc)))
-  scales <- scales[scales >= min_scale & scales <= max_scale]
-  n_sc <- length(scales)
-  # Cumulative profile
-  ts_mean <- mean(x)
-  profile <- cumsum(x - ts_mean)
-  fluct <- numeric(n_sc)
-  for (si in seq_len(n_sc)) {
-    s <- scales[si]
-    n_seg <- floor(n / s)
-    seg_fluct <- numeric(2L * n_seg)
-    x_vals <- seq_len(s)
-    x_mean <- mean(x_vals)
-    xx_var <- sum((x_vals - x_mean)^2)
-    # Forward direction
-    for (j in seq_len(n_seg)) {
-      start_idx <- (j - 1L) * s + 1L
-      end_idx <- j * s
-      segment <- profile[start_idx:end_idx]
-      y_mean <- mean(segment)
-      xy_cov <- sum((x_vals - x_mean) * (segment - y_mean))
-      slope <- xy_cov / xx_var
-      intercept <- y_mean - slope * x_mean
-      trend <- intercept + slope * x_vals
-      detrended <- segment - trend
-      seg_fluct[j] <- sqrt(mean(detrended^2))
-    }
-    # Backward direction
-    for (j in seq_len(n_seg)) {
-      start_idx <- n - j * s + 1L
-      end_idx <- n - (j - 1L) * s
-      segment <- profile[start_idx:end_idx]
-      y_mean <- mean(segment)
-      xy_cov <- sum((x_vals - x_mean) * (segment - y_mean))
-      slope <- xy_cov / xx_var
-      intercept <- y_mean - slope * x_mean
-      trend <- intercept + slope * x_vals
-      detrended <- segment - trend
-      seg_fluct[n_seg + j] <- sqrt(mean(detrended^2))
-    }
-    fluct[si] <- sqrt(mean(seg_fluct^2))
-  }
-  valid <- !is.na(fluct) & fluct > 0
-  log_s <- log(scales[valid])
-  log_f <- log(fluct[valid])
-  x_m <- mean(log_s)
-  y_m <- mean(log_f)
-  xy_cov <- sum((log_s - x_m) * (log_f - y_m))
-  xx_var <- sum((log_s - x_m)^2)
-  slope <- xy_cov / xx_var
-  intercept <- y_m - slope * x_m
-  y_pred <- intercept + slope * log_s
-  ss_tot <- sum((log_f - y_m)^2)
-  ss_res <- sum((log_f - y_pred)^2)
-  r_sq <- 1 - (ss_res / ss_tot)
-  list(
-    hurst = slope,
-    r_squared = r_sq,
-    scales = scales[valid],
-    fluctuations = fluct[valid]
-  )
-}
-
-#' @noRd
-hurst_rs <- function(x, min_scale, max_scale, n_scales) {
-  n <- length(x)
-  if (is.null(max_scale)) {
-    max_scale <- floor(n / 2)
-  }
-  max_scale <- min(max_scale, floor(n / 2))
-  if (max_scale < min_scale) {
-    return(
-      list(
-        hurst = NA_real_,
-        r_squared = NA_real_,
-        scales = integer(0),
-        rs_values = numeric(0)
-      )
-    )
-  }
-  scales <- unique(floor(
-    exp(seq(log(min_scale), log(max_scale), length.out = n_scales))
-  ))
-  rs_vals <- numeric(length(scales))
-  for (si in seq_along(scales)) {
-    s <- scales[si]
-    n_seg <- floor(n / s)
-    rs_seg <- numeric(n_seg)
-    for (v in seq_len(n_seg)) {
-      idx <- ((v - 1L) * s + 1L):(v * s)
-      seg <- x[idx]
-      mu <- mean(seg)
-      y <- cumsum(seg - mu)
-      r <- max(y) - min(y)
-      s_val <- stats::sd(seg)
-      rs_seg[v] <- ifelse_(s_val == 0, NA_real_, r / s_val)
-    }
-    rs_vals[si] <- mean(rs_seg, na.rm = TRUE)
-  }
-  valid <- !is.na(rs_vals) & rs_vals > 0
-  if (sum(valid) < 3L) {
-    return(
-      list(
-        hurst = NA_real_,
-        r_squared = NA_real_,
-        scales = scales,
-        rs_values = rs_vals
-      )
-    )
-  }
-  log_s <- log(scales[valid])
-  log_rs <- log(rs_vals[valid])
-  fit <- stats::lm.fit(x = cbind(1, log_s), y = log_rs)
-  ss_res <- sum(fit$residuals^2)
-  ss_tot <- sum((log_rs - mean(log_rs))^2)
-  r_sq <- ifelse_(ss_tot == 0, 1, 1 - ss_res / ss_tot)
-  list(
-    hurst = fit$coefficients[2L],
-    r_squared = r_sq,
-    scales = scales,
-    rs_values = rs_vals
-  )
-}
-
-#' @noRd
-hurst_mfdfa <- function(x, q, min_scale, max_scale, n_scales) {
-  n <- length(x)
-  if (is.null(max_scale)) max_scale <- floor(n / 4)
-  max_scale <- min(max_scale, floor(n / 4))
-  if (max_scale < min_scale) {
-    return(
-      list(
-        hurst = NA_real_,
-        r_squared = NA_real_,
-        hq = numeric(0),
-        tauq = numeric(0),
-        mf_width = NA_real_
-      )
-    )
-  }
-  scales <- unique(floor(
-    exp(seq(log(min_scale), log(max_scale), length.out = n_scales))
-  ))
-  y <- cumsum(x - mean(x, na.rm = TRUE))
-  # Compute fluctuation for each scale and q
-  fq <- matrix(NA_real_, nrow = length(q), ncol = length(scales))
-  for (si in seq_along(scales)) {
-    s <- scales[si]
-    n_seg <- floor(n / s)
-    rms_vals <- numeric(n_seg)
-    for (v in seq_len(n_seg)) {
-      idx <- ((v - 1L) * s + 1L):(v * s)
-      seg <- y[idx]
-      x_local <- seq_along(seg)
-      fit <- stats::lm.fit(x = cbind(1, x_local), y = seg)
-      rms_vals[v] <- mean(fit$residuals^2)
-    }
-    rms_vals <- rms_vals[rms_vals > 0]
-    if (length(rms_vals) == 0L) next
-    for (qi in seq_along(q)) {
-      qv <- q[qi]
-      if (abs(qv) < .Machine$double.eps) {
-        fq[qi, si] <- exp(0.5 * mean(log(rms_vals)))
-      } else {
-        fq[qi, si] <- (mean(rms_vals^(qv / 2)))^(1 / qv)
-      }
-    }
-  }
-  # Compute generalized Hurst exponent h(q) for each q
-  hq <- numeric(length(q))
-  for (qi in seq_along(q)) {
-    vals <- fq[qi, ]
-    valid <- !is.na(vals) & vals > 0
-    if (sum(valid) < 3L) {
-      hq[qi] <- NA_real_
-      next
-    }
-    fit <- stats::lm.fit(
-      x = cbind(1, log(scales[valid])),
-      y = log(vals[valid])
-    )
-    hq[qi] <- fit$coefficients[2L]
-  }
-  # Multifractal spectrum
-  tauq <- q * hq - 1
-  # Overall Hurst at q=2
-  q2_idx <- which.min(abs(q - 2))
-  h_main <- hq[q2_idx]
-  # Multifractal width
-  valid_hq <- hq[!is.na(hq)]
-  mf_width <- ifelse_(
-    length(valid_hq) >= 2L,
-    max(valid_hq) - min(valid_hq),
-    NA_real_
-  )
-  # R-squared for q=2
-  vals_q2 <- fq[q2_idx, ]
-  valid_q2 <- !is.na(vals_q2) & vals_q2 > 0
-  r_sq <- NA_real_
-  if (sum(valid_q2) >= 3L) {
-    log_s <- log(scales[valid_q2])
-    log_f <- log(vals_q2[valid_q2])
-    fit <- stats::lm.fit(x = cbind(1, log_s), y = log_f)
-    ss_res <- sum(fit$residuals^2)
-    ss_tot <- sum((log_f - mean(log_f))^2)
-    r_sq <- ifelse_(ss_tot == 0, 1, 1 - ss_res / ss_tot)
-  }
-  list(
-    hurst = h_main,
-    r_squared = r_sq,
-    hq = hq,
-    tauq = tauq,
-    mf_width = mf_width
-  )
-}
-
-#' @noRd
-hurst_classify <- function(h) {
-  labels <- c(
-    "strong_antipersistent",
-    "antipersistent",
-    "random_walk",
-    "persistent",
-    "strong_persistent"
-  )
-  breaks <- c(-Inf, 0.4, 0.5, 0.6, 0.7, Inf)
-  as.character(cut(h, breaks = breaks, labels = labels, right = FALSE))
-}
-
-#' @noRd
-hurst_mf_classify <- function(width) {
-  labels <- c(
-    "monofractal",
-    "weak_multifractal",
-    "moderate_multifractal",
-    "strong_multifractal"
-  )
-  breaks <- c(-Inf, 0.1, 0.3, 0.5, Inf)
-  as.character(cut(width, breaks = breaks, labels = labels, right = FALSE))
-}
-
-#' @noRd
-hurst_state_colors <- function() {
-  c(
-    strong_antipersistent = "#FF6B6B",
-    antipersistent = "#FFA06B",
-    random_walk = "#FFD93D",
-    persistent = "#6BCF7F",
-    strong_persistent = "#4ECDC4"
-  )
-}
 
 #' Detect Early Warning Signals from Hurst Analysis
 #'
@@ -679,31 +362,31 @@ hurst_state_colors <- function() {
 #' without requiring tuning.
 #'
 #' @export
-#' @param data \[`hurst`\]\cr
+#' @param data \[`hurst`]\cr
 #'   An object of class `hurst` as returned by [hurst()] with
 #'   `states = TRUE`.
-#' @param trend_window \[`integer(1)`: `30L`\]\cr
+#' @param trend_window \[`integer(1)`: `30L`]\cr
 #'   Window size for detecting trends in the Hurst exponent.
-#' @param volatility_window \[`integer(1)`: `30L`\]\cr
+#' @param volatility_window \[`integer(1)`: `30L`]\cr
 #'   Window size for measuring volatility of the Hurst exponent.
-#' @param flicker_window \[`integer(1)`: `20L`\]\cr
+#' @param flicker_window \[`integer(1)`: `20L`]\cr
 #'   Window size for detecting flickering (rapid state transitions).
 #' @return An object of class `"hurst_ews"` (inheriting from
 #'   [tibble::tibble()]) containing the original `hurst` columns plus:
 #'
-#'     * `extreme_low` -- binary indicator (0/1).
-#'     * `extreme_high` -- binary indicator (0/1).
-#'     * `trend_up` -- binary indicator (0/1).
-#'     * `trend_down` -- binary indicator (0/1).
-#'     * `high_volatility` -- binary indicator (0/1).
-#'     * `flickering` -- binary indicator (0/1).
-#'     * `variance_ratio` -- binary indicator (0/1).
-#'     * `spectral_shift` -- binary indicator (0/1).
-#'     * `autocorr_increase` -- binary indicator (0/1).
-#'     * `state_persistence` -- binary indicator (0/1).
-#'     * `warning_score` -- numeric score normalized to \eqn{[0, 1]}.
-#'     * `warning_level` -- integer warning level (0--4).
-#'     * `warning_label` -- character label: `"none"`, `"low"`,
+#'     * `extreme_low`: binary indicator (0/1).
+#'     * `extreme_high`: binary indicator (0/1).
+#'     * `trend_up`: binary indicator (0/1).
+#'     * `trend_down`: binary indicator (0/1).
+#'     * `high_volatility`: binary indicator (0/1).
+#'     * `flickering`: binary indicator (0/1).
+#'     * `variance_ratio`: binary indicator (0/1).
+#'     * `spectral_shift`: binary indicator (0/1).
+#'     * `autocorr_increase`: binary indicator (0/1).
+#'     * `state_persistence`: binary indicator (0/1).
+#'     * `warning_score`: numeric score normalized to \eqn{[0, 1]}.
+#'     * `warning_level`: integer warning level (0--4).
+#'     * `warning_label`: character label: `"none"`, `"low"`,
 #'       `"moderate"`, `"high"`, or `"critical"`.
 #'
 #'   Attribute: `indicator_weights` (named numeric vector of the 10
@@ -946,29 +629,313 @@ detect_hurst_warnings <- function(data, trend_window = 30L,
   )
 }
 
-#' Summarize Hurst Early Warning Signal Results
-#'
-#' Prints a compact summary of the warning level distribution across all
-#' time points, including counts and percentages for each level and the
-#' maximum warning level observed.
-#'
-#' @export
-#' @param object \[`hurst_ews`\]\cr
-#'   A `hurst_ews` object as returned by [detect_hurst_warnings()].
-#' @param ... Additional arguments (currently unused).
-#' @return `summary.hurst_ews` object. A `list` containing the warning
-#'   labels and the warning levels.
-summary.hurst_ews <- function(object, ...) {
-  labels <- c("none", "low", "moderate", "high", "critical")
-  counts <- table(factor(object$warning_label, levels = labels))
-  max_level <- max(object$warning_level, na.rm = TRUE)
-  structure(
-    list(
-      n = nrow(object),
-      labels = labels,
-      counts = counts,
-      max_level = max(object$warning_level, na.rm = TRUE)
-    ),
-    class = c("summary.hurst_ews", "list")
+hurst_scale <- function(x, scaling) {
+  switch(
+    scaling,
+    none = x,
+    center = x - mean(x, na.rm = TRUE),
+    standardize = {
+      s <- stats::sd(x, na.rm = TRUE)
+      ifelse_(
+        s == 0,
+        x - mean(x, na.rm = TRUE),
+        (x - mean(x, na.rm = TRUE)) / s
+      )
+    },
+    minmax = {
+      mn <- min(x, na.rm = TRUE)
+      mx <- max(x, na.rm = TRUE)
+      rng <- mx - mn
+      ifelse_(
+        rng == 0,
+        rep(0.5, length(x)),
+        (x - mn) / rng
+      )
+    },
+    iqr = {
+      q <- stats::quantile(x, c(0.25, 0.75), na.rm = TRUE)
+      iqr_val <- q[2L] - q[1L]
+      if (iqr_val == 0) x - stats::median(x, na.rm = TRUE)
+      else (x - stats::median(x, na.rm = TRUE)) / iqr_val
+    }
+  )
+}
+
+hurst_dfa <- function(x, min_scale, max_scale, n_scales) {
+  # Matches Resilience4 .calculate_hurst_dfa() exactly
+  x <- x[!is.na(x)]
+  n <- length(x)
+  if (n < 2L * min_scale) {
+    return(
+      list(
+        hurst = NA_real_,
+        r_squared = NA_real_,
+        scales = integer(0),
+        fluctuations = numeric(0)
+      )
+    )
+  }
+  min_scale <- max(4L, min_scale)
+  if (is.null(max_scale)) {
+    max_scale <- floor(n / 4)
+  } else if (max_scale > n / 2) {
+    max_scale <- floor(n / 4)
+  }
+  if (max_scale <= min_scale) {
+    return(
+      list(
+        hurst = NA_real_,
+        r_squared = NA_real_,
+        scales = integer(0),
+        fluctuations = numeric(0)
+      )
+    )
+  }
+  # Logarithmically spaced scales with round() (not floor)
+  log_sc <- seq(log(min_scale), log(max_scale), length.out = n_scales)
+  scales <- unique(round(exp(log_sc)))
+  scales <- scales[scales >= min_scale & scales <= max_scale]
+  n_sc <- length(scales)
+  # Cumulative profile
+  ts_mean <- mean(x)
+  profile <- cumsum(x - ts_mean)
+  fluct <- numeric(n_sc)
+  for (si in seq_len(n_sc)) {
+    s <- scales[si]
+    n_seg <- floor(n / s)
+    seg_fluct <- numeric(2L * n_seg)
+    x_vals <- seq_len(s)
+    x_mean <- mean(x_vals)
+    xx_var <- sum((x_vals - x_mean)^2)
+    # Forward direction
+    for (j in seq_len(n_seg)) {
+      start_idx <- (j - 1L) * s + 1L
+      end_idx <- j * s
+      segment <- profile[start_idx:end_idx]
+      y_mean <- mean(segment)
+      xy_cov <- sum((x_vals - x_mean) * (segment - y_mean))
+      slope <- xy_cov / xx_var
+      intercept <- y_mean - slope * x_mean
+      trend <- intercept + slope * x_vals
+      detrended <- segment - trend
+      seg_fluct[j] <- sqrt(mean(detrended^2))
+    }
+    # Backward direction
+    for (j in seq_len(n_seg)) {
+      start_idx <- n - j * s + 1L
+      end_idx <- n - (j - 1L) * s
+      segment <- profile[start_idx:end_idx]
+      y_mean <- mean(segment)
+      xy_cov <- sum((x_vals - x_mean) * (segment - y_mean))
+      slope <- xy_cov / xx_var
+      intercept <- y_mean - slope * x_mean
+      trend <- intercept + slope * x_vals
+      detrended <- segment - trend
+      seg_fluct[n_seg + j] <- sqrt(mean(detrended^2))
+    }
+    fluct[si] <- sqrt(mean(seg_fluct^2))
+  }
+  valid <- !is.na(fluct) & fluct > 0
+  log_s <- log(scales[valid])
+  log_f <- log(fluct[valid])
+  x_m <- mean(log_s)
+  y_m <- mean(log_f)
+  xy_cov <- sum((log_s - x_m) * (log_f - y_m))
+  xx_var <- sum((log_s - x_m)^2)
+  slope <- xy_cov / xx_var
+  intercept <- y_m - slope * x_m
+  y_pred <- intercept + slope * log_s
+  ss_tot <- sum((log_f - y_m)^2)
+  ss_res <- sum((log_f - y_pred)^2)
+  r_sq <- 1 - (ss_res / ss_tot)
+  list(
+    hurst = slope,
+    r_squared = r_sq,
+    scales = scales[valid],
+    fluctuations = fluct[valid]
+  )
+}
+
+hurst_rs <- function(x, min_scale, max_scale, n_scales) {
+  n <- length(x)
+  if (is.null(max_scale)) {
+    max_scale <- floor(n / 2)
+  }
+  max_scale <- min(max_scale, floor(n / 2))
+  if (max_scale < min_scale) {
+    return(
+      list(
+        hurst = NA_real_,
+        r_squared = NA_real_,
+        scales = integer(0),
+        rs_values = numeric(0)
+      )
+    )
+  }
+  scales <- unique(floor(
+    exp(seq(log(min_scale), log(max_scale), length.out = n_scales))
+  ))
+  rs_vals <- numeric(length(scales))
+  for (si in seq_along(scales)) {
+    s <- scales[si]
+    n_seg <- floor(n / s)
+    rs_seg <- numeric(n_seg)
+    for (v in seq_len(n_seg)) {
+      idx <- ((v - 1L) * s + 1L):(v * s)
+      seg <- x[idx]
+      mu <- mean(seg)
+      y <- cumsum(seg - mu)
+      r <- max(y) - min(y)
+      s_val <- stats::sd(seg)
+      rs_seg[v] <- ifelse_(s_val == 0, NA_real_, r / s_val)
+    }
+    rs_vals[si] <- mean(rs_seg, na.rm = TRUE)
+  }
+  valid <- !is.na(rs_vals) & rs_vals > 0
+  if (sum(valid) < 3L) {
+    return(
+      list(
+        hurst = NA_real_,
+        r_squared = NA_real_,
+        scales = scales,
+        rs_values = rs_vals
+      )
+    )
+  }
+  log_s <- log(scales[valid])
+  log_rs <- log(rs_vals[valid])
+  fit <- stats::lm.fit(x = cbind(1, log_s), y = log_rs)
+  ss_res <- sum(fit$residuals^2)
+  ss_tot <- sum((log_rs - mean(log_rs))^2)
+  r_sq <- ifelse_(ss_tot == 0, 1, 1 - ss_res / ss_tot)
+  list(
+    hurst = fit$coefficients[2L],
+    r_squared = r_sq,
+    scales = scales,
+    rs_values = rs_vals
+  )
+}
+
+hurst_mfdfa <- function(x, q, min_scale, max_scale, n_scales) {
+  n <- length(x)
+  if (is.null(max_scale)) max_scale <- floor(n / 4)
+  max_scale <- min(max_scale, floor(n / 4))
+  if (max_scale < min_scale) {
+    return(
+      list(
+        hurst = NA_real_,
+        r_squared = NA_real_,
+        hq = numeric(0),
+        tauq = numeric(0),
+        mf_width = NA_real_
+      )
+    )
+  }
+  scales <- unique(floor(
+    exp(seq(log(min_scale), log(max_scale), length.out = n_scales))
+  ))
+  y <- cumsum(x - mean(x, na.rm = TRUE))
+  # Compute fluctuation for each scale and q
+  fq <- matrix(NA_real_, nrow = length(q), ncol = length(scales))
+  for (si in seq_along(scales)) {
+    s <- scales[si]
+    n_seg <- floor(n / s)
+    rms_vals <- numeric(n_seg)
+    for (v in seq_len(n_seg)) {
+      idx <- ((v - 1L) * s + 1L):(v * s)
+      seg <- y[idx]
+      x_local <- seq_along(seg)
+      fit <- stats::lm.fit(x = cbind(1, x_local), y = seg)
+      rms_vals[v] <- mean(fit$residuals^2)
+    }
+    rms_vals <- rms_vals[rms_vals > 0]
+    if (length(rms_vals) == 0L) next
+    for (qi in seq_along(q)) {
+      qv <- q[qi]
+      if (abs(qv) < .Machine$double.eps) {
+        fq[qi, si] <- exp(0.5 * mean(log(rms_vals)))
+      } else {
+        fq[qi, si] <- (mean(rms_vals^(qv / 2)))^(1 / qv)
+      }
+    }
+  }
+  # Compute generalized Hurst exponent h(q) for each q
+  hq <- numeric(length(q))
+  for (qi in seq_along(q)) {
+    vals <- fq[qi, ]
+    valid <- !is.na(vals) & vals > 0
+    if (sum(valid) < 3L) {
+      hq[qi] <- NA_real_
+      next
+    }
+    fit <- stats::lm.fit(
+      x = cbind(1, log(scales[valid])),
+      y = log(vals[valid])
+    )
+    hq[qi] <- fit$coefficients[2L]
+  }
+  # Multifractal spectrum
+  tauq <- q * hq - 1
+  # Overall Hurst at q=2
+  q2_idx <- which.min(abs(q - 2))
+  h_main <- hq[q2_idx]
+  # Multifractal width
+  valid_hq <- hq[!is.na(hq)]
+  mf_width <- ifelse_(
+    length(valid_hq) >= 2L,
+    max(valid_hq) - min(valid_hq),
+    NA_real_
+  )
+  # R-squared for q=2
+  vals_q2 <- fq[q2_idx, ]
+  valid_q2 <- !is.na(vals_q2) & vals_q2 > 0
+  r_sq <- NA_real_
+  if (sum(valid_q2) >= 3L) {
+    log_s <- log(scales[valid_q2])
+    log_f <- log(vals_q2[valid_q2])
+    fit <- stats::lm.fit(x = cbind(1, log_s), y = log_f)
+    ss_res <- sum(fit$residuals^2)
+    ss_tot <- sum((log_f - mean(log_f))^2)
+    r_sq <- ifelse_(ss_tot == 0, 1, 1 - ss_res / ss_tot)
+  }
+  list(
+    hurst = h_main,
+    r_squared = r_sq,
+    hq = hq,
+    tauq = tauq,
+    mf_width = mf_width
+  )
+}
+
+hurst_classify <- function(h) {
+  labels <- c(
+    "strong_antipersistent",
+    "antipersistent",
+    "random_walk",
+    "persistent",
+    "strong_persistent"
+  )
+  breaks <- c(-Inf, 0.4, 0.5, 0.6, 0.7, Inf)
+  as.character(cut(h, breaks = breaks, labels = labels, right = FALSE))
+}
+
+hurst_mf_classify <- function(width) {
+  labels <- c(
+    "monofractal",
+    "weak_multifractal",
+    "moderate_multifractal",
+    "strong_multifractal"
+  )
+  breaks <- c(-Inf, 0.1, 0.3, 0.5, Inf)
+  as.character(cut(width, breaks = breaks, labels = labels, right = FALSE))
+}
+
+hurst_state_colors <- function() {
+  c(
+    strong_antipersistent = "#FF6B6B",
+    antipersistent = "#FFA06B",
+    random_walk = "#FFD93D",
+    persistent = "#6BCF7F",
+    strong_persistent = "#4ECDC4"
   )
 }

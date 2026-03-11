@@ -29,19 +29,19 @@ Window size for detecting flickering (rapid state transitions).}
 An object of class \code{"hurst_ews"} (inheriting from
 \code{\link[tibble:tibble]{tibble::tibble()}}) containing the original \code{hurst} columns plus:
 
-\if{html}{\out{<div class="sourceCode">}}\preformatted{* `extreme_low` -- binary indicator (0/1).
-* `extreme_high` -- binary indicator (0/1).
-* `trend_up` -- binary indicator (0/1).
-* `trend_down` -- binary indicator (0/1).
-* `high_volatility` -- binary indicator (0/1).
-* `flickering` -- binary indicator (0/1).
-* `variance_ratio` -- binary indicator (0/1).
-* `spectral_shift` -- binary indicator (0/1).
-* `autocorr_increase` -- binary indicator (0/1).
-* `state_persistence` -- binary indicator (0/1).
-* `warning_score` -- numeric score normalized to \eqn{[0, 1]}.
-* `warning_level` -- integer warning level (0--4).
-* `warning_label` -- character label: `"none"`, `"low"`,
+\if{html}{\out{<div class="sourceCode">}}\preformatted{* `extreme_low`: binary indicator (0/1).
+* `extreme_high`: binary indicator (0/1).
+* `trend_up`: binary indicator (0/1).
+* `trend_down`: binary indicator (0/1).
+* `high_volatility`: binary indicator (0/1).
+* `flickering`: binary indicator (0/1).
+* `variance_ratio`: binary indicator (0/1).
+* `spectral_shift`: binary indicator (0/1).
+* `autocorr_increase`: binary indicator (0/1).
+* `state_persistence`: binary indicator (0/1).
+* `warning_score`: numeric score normalized to \eqn{[0, 1]}.
+* `warning_level`: integer warning level (0--4).
+* `warning_label`: character label: `"none"`, `"low"`,
   `"moderate"`, `"high"`, or `"critical"`.
 }\if{html}{\out{</div>}}
 

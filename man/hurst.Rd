@@ -38,10 +38,6 @@ Rolling window size for local Hurst estimation when \code{states = TRUE}.}
 \item{step}{[\code{integer(1)}: \code{1L}]\cr
 Step size between consecutive windows.}
 
-\item{scaling}{[\code{character(1)}: \code{"none"}]\cr
-Preprocessing applied to the data. The available options are:
-\code{"none"}, \code{"center"}, \code{"standardize"}, \code{"minmax"}, and \code{"iqr"}.}
-
 \item{min_scale}{[\code{integer(1)}: \code{4L}]\cr
 Minimum box size for the DFA/R/S log-log regression.}
 

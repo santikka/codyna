@@ -36,27 +36,27 @@
 #' for benchmarking against the true labels.
 #'
 #' @export
-#' @param n_individuals \[`integer(1)`: `1`\]\cr
+#' @param n_individuals \[`integer(1)`: `1`]\cr
 #'   Number of distinct individuals to generate.
-#' @param data_length \[`integer(1)`: `500`\]\cr
+#' @param data_length \[`integer(1)`: `500`]\cr
 #'   Number of data points per individual.
-#' @param data_type \[`character(1)`: `"resilience"`\]\cr
+#' @param data_type \[`character(1)`: `"resilience"`]\cr
 #'   One of `"resilience"` or `"clustered"`.
-#' @param n_stable_levels \[`integer(1)`: `3`\]\cr
+#' @param n_stable_levels \[`integer(1)`: `3`]\cr
 #'   Number of stable levels (resilience mode).
-#' @param mean_stable_value \[`numeric(1)`: `100`\]\cr
+#' @param mean_stable_value \[`numeric(1)`: `100`]\cr
 #'   Central value of the stable phase.
-#' @param level_separation \[`numeric(1)`: `20`\]\cr
+#' @param level_separation \[`numeric(1)`: `20`]\cr
 #'   Percentage separation between stable levels.
 #' @param n_levels \[`integer(1)`: `3`\]\cr
 #'   Number of clusters (clustered mode, 2--6).
-#' @param results_df \[`data.frame` or `NULL`\]\cr
+#' @param results_df \[`data.frame` or `NULL`]\cr
 #'   Optional external results for comparison plotting.
-#' @param results_col \[`character(1)` or `NULL`\]\cr
+#' @param results_col \[`character(1)` or `NULL`]\cr
 #'   Column in `results_df` with classification labels.
-#' @param seed \[`integer(1)`: `42`\]\cr
+#' @param seed \[`integer(1)`: `42`]\cr
 #'   Random seed for reproducibility.
-#' @param generate_plot \[`logical(1)`: `TRUE`\]\cr
+#' @param generate_plot \[`logical(1)`: `TRUE`]\cr
 #'   If `TRUE`, return a list with `$data` and `$plot`.
 #'
 #' @return Depends on `generate_plot`:

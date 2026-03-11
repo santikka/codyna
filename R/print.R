@@ -138,7 +138,7 @@ print.patterns <- function(x, ...) {
 #' to the default tibble print method.
 #'
 #' @export
-#' @param x \[`hurst`\]\cr
+#' @param x \[`hurst`]\cr
 #'   A `hurst` object as returned by [hurst()] with `states = TRUE`.
 #' @param ... Additional arguments passed to the tibble print method.
 #' @return `x`, invisibly.
@@ -152,7 +152,7 @@ print.hurst <- function(x, ...) {
 #' to the default tibble print method.
 #'
 #' @export
-#' @param x \[`hurst_ews`\]\cr
+#' @param x \[`hurst_ews`]\cr
 #'   A `hurst_ews` object as returned by [detect_hurst_warnings()].
 #' @param ... Additional arguments passed to the tibble print method.
 #' @return `x`, invisibly.
@@ -160,7 +160,6 @@ print.hurst <- function(x, ...) {
 print.hurst_ews <- function(x, ...) {
   NextMethod(generic = "print", object = x, ...)
 }
-
 
 #' Print a Global Hurst Exponent Result
 #'
@@ -186,7 +185,6 @@ print.hurst_global <- function(x, ...) {
   invisible(x)
 }
 
-
 #' Print Hurst Early Warning Signal Analysis Summary
 #'
 #' @export
@@ -208,5 +206,129 @@ print.summary.hurst_ews <- function(x, ...) {
     pct <- round(100 * counts[i] / n, 1L)
     cat("  ", labels[i], ": ", counts[i], " (", pct, "%)\n", sep = "")
   }
+  invisible(x)
+}
+
+#' Print a Multivariate EWS Object
+#'
+#' Print method for `"multi_ews"` objects.
+#' Delegates to tibble's default print.
+#'
+#' @export
+#' @param x \[`multi_ews`]\cr A `multi_ews` object.
+#' @param ... Additional arguments passed to the tibble print method.
+#' @return `x`, invisibly.
+print.multi_ews <- function(x, ...) {
+  NextMethod(generic = "print", object = x, ...)
+}
+
+#' Print a Summary of a  Multivariate EWS Object
+#'
+#' @export
+#' @param x \[`summary.multi_ews`]\cr A `summary.multi_ews` object.
+#' @param ... Not used.
+#' @return `x`, invisibly.
+print.summary.multi_ews <- function(x, ...) {
+  check_missing(x)
+  check_class(x, "summary.multi_ews")
+  method <- attr(x, "method")
+  cat("Multivariate EWS Summary\n\n")
+  cat("Method:", method, "\n")
+  cat("Total time points:", length(unique(x$time)), "\n")
+  cat("Metrics computed:", paste(unique(x$metric), collapse = ", "), "\n")
+  cat("\n")
+  if (method == "expanding") {
+    cat("Per-metric warnings:\n")
+    warned <- x[x$detected == 1L, ]
+    if (nrow(warned) > 0L) {
+      tbl <- table(warned$metric)
+      for (nm in names(tbl)) {
+        cat("  ", nm, ":", tbl[[nm]], "time points\n")
+      }
+    } else {
+      cat("  No warnings detected.\n")
+    }
+    cls <- attr(x, "classification")
+    if (!is.null(cls)) {
+      cat("\nSystem state distribution:\n")
+      tbl <- table(cls$state)
+      total <- sum(tbl)
+      for (nm in names(tbl)) {
+        pct <- round(100 * tbl[[nm]] / total, 1L)
+        cat("  ", nm, ":", tbl[[nm]], "(", pct, "%)\n")
+      }
+    }
+  }
+  if (method == "rolling") {
+    cor_vals <- attr(x, "cor")
+    if (!is.null(cor_vals)) {
+      cat("Kendall's tau trend statistics:\n")
+      tau_clean <- cor_vals
+      names(tau_clean) <- sub("\\.tau$", "", names(tau_clean))
+      strong <- names(tau_clean)[tau_clean > 0.7 & !is.na(tau_clean)]
+      if (length(strong) > 0L) {
+        cat(
+          "  Strong upward trends (tau > 0.7):",
+          paste(strong, collapse = ", "),
+          "\n"
+        )
+      } else {
+        cat("  No metrics show strong upward trends.\n")
+      }
+    }
+  }
+}
+
+
+#' Print a Potential Analysis Object
+#'
+#' Prints a concise summary of the potential analysis: the number of
+#' wells and barriers, well locations, and analysis settings.
+#'
+#' @describeIn potential_analysis Print method for `"potential"` objects.
+#'
+#' @export
+#' @param x \[`potential`\]\cr
+#'   A `potential` object.
+#' @param ... Additional arguments (currently unused).
+#' @return `x`, invisibly.
+print.potential <- function(x, ...) {
+  cat("Potential Analysis\n")
+  cat("  Detrend  :", attr(x, "detrend"), "\n")
+  cat("  N points :", length(x$values), "\n")
+  cat("  N bins   :", attr(x, "n_bins"), "\n")
+  bw_str <- ifelse_(
+    is.null(attr(x, "bandwidth")),
+    "auto (Silverman)",
+    as.character(round(attr(x, "bandwidth"), 4))
+  )
+  cat("  Bandwidth:", bw_str, "\n")
+  win_str <- ifelse_(
+    is.null(attr(x, "window")),
+    "global",
+    as.character(attr(x, "window"))
+  )
+  cat("  Window   :", win_str, "\n")
+  cat("  Wells    :", x$n_wells, "\n")
+  cat("  Barriers :", nrow(x$barriers), "\n")
+
+  if (x$n_wells > 0L) {
+    cat("\n  Well locations:\n")
+    for (i in seq_len(nrow(x$wells))) {
+      cat(sprintf(
+        "    Well %d: x = %.4f  (depth = %.4f, width = %.4f)\n",
+        i, x$wells$location[i], x$wells$depth[i], x$wells$width[i]
+      ))
+    }
+  }
+
+  if (!is.null(x$rolling)) {
+    n_wells_range <- range(x$rolling$n_wells, na.rm = TRUE)
+    cat(sprintf(
+      "\n  Rolling: n_wells range = [%d, %d]\n",
+      n_wells_range[1L], n_wells_range[2L]
+    ))
+  }
+
   invisible(x)
 }

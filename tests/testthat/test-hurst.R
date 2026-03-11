@@ -288,7 +288,7 @@ test_that("hurst_dfa handles NAs in input (line 350)", {
   expect_true(is.numeric(result$hurst))
 })
 
-test_that("hurst_dfa returns NA for too-short series (lines 353-354)", {
+test_that("hurst_dfa returns NA for too-short series", {
   set.seed(42)
   # n < 2 * min_scale
   x <- rnorm(5)
@@ -320,7 +320,7 @@ test_that("hurst_dfa adjusts max_scale > n/2 (line 360)", {
   expect_true(is.numeric(result$hurst))
 })
 
-test_that("hurst_dfa returns NA when max_scale <= min_scale (lines 363-364)", {
+test_that("hurst_dfa returns NA when max_scale <= min_scale", {
   set.seed(42)
   x <- cumsum(rnorm(20))
   result <- hurst_dfa(x, min_scale = 10L, max_scale = 5L, n_scales = 10L)
@@ -328,7 +328,7 @@ test_that("hurst_dfa returns NA when max_scale <= min_scale (lines 363-364)", {
   expect_true(is.na(result$r_squared))
 })
 
-test_that("hurst_dfa handles n_seg < 2 for large scale (lines 379-380)", {
+test_that("hurst_dfa handles n_seg < 2 for large scale", {
   set.seed(42)
   # Very short series so some scales will have n_seg < 2
   x <- cumsum(rnorm(20))
@@ -337,7 +337,7 @@ test_that("hurst_dfa handles n_seg < 2 for large scale (lines 379-380)", {
   expect_true(is.numeric(result$hurst))
 })
 
-test_that("hurst_dfa with constant segment (xx_var=0) (lines 400, 417)", {
+test_that("hurst_dfa with constant segment (xx_var = 0)", {
   set.seed(42)
   # When x_vals has length 1, xx_var = 0
   # This happens when scale = 1, but min_scale is enforced at 4
@@ -348,7 +348,7 @@ test_that("hurst_dfa with constant segment (xx_var=0) (lines 400, 417)", {
   expect_true(is.numeric(result$hurst))
 })
 
-test_that("hurst_dfa returns NA with < 3 valid fluctuations (lines 424-425)", {
+test_that("hurst_dfa returns NA with < 3 valid fluctuations", {
   set.seed(42)
   # Very short series with large min_scale => few valid fluctuations
   x <- cumsum(rnorm(12))
@@ -365,7 +365,7 @@ test_that("hurst_rs handles NULL max_scale (line 450)", {
   expect_true(is.numeric(result$hurst))
 })
 
-test_that("hurst_rs returns NA when max_scale < min_scale (lines 453-454)", {
+test_that("hurst_rs returns NA when max_scale < min_scale", {
   set.seed(42)
   x <- cumsum(rnorm(20))
   result <- hurst_rs(x, min_scale = 20L, max_scale = 5L,
@@ -375,7 +375,7 @@ test_that("hurst_rs returns NA when max_scale < min_scale (lines 453-454)", {
   expect_equal(length(result$scales), 0L)
 })
 
-test_that("hurst_rs handles n_seg < 1 for large scales (lines 464-465)", {
+test_that("hurst_rs handles n_seg < 1 for large scales", {
   set.seed(42)
   x <- cumsum(rnorm(20))
   # Force a scale larger than n
@@ -383,7 +383,7 @@ test_that("hurst_rs handles n_seg < 1 for large scales (lines 464-465)", {
   expect_true(is.numeric(result$hurst))
 })
 
-test_that("hurst_rs returns NA with < 3 valid rs values (lines 481-482)", {
+test_that("hurst_rs returns NA with < 3 valid rs values", {
   set.seed(42)
   # Very short series with constant values => sd=0 => NA rs values
   x <- rep(5, 12)
@@ -398,7 +398,7 @@ test_that("hurst_mfdfa handles NULL max_scale (line 501)", {
   expect_true(is.numeric(result$hurst))
 })
 
-test_that("hurst_mfdfa returns NA when max_scale < min_scale (lines 504-505)", {
+test_that("hurst_mfdfa returns NA when max_scale < min_scale", {
   set.seed(42)
   x <- cumsum(rnorm(20))
   result <- hurst_mfdfa(x, q = seq(-2, 2, 1), min_scale = 20L, max_scale = 3L, n_scales = 10L)
@@ -411,28 +411,34 @@ test_that("hurst_mfdfa handles n_seg < 1 (line 516)", {
   set.seed(42)
   # Short series where some scales have n_seg < 1
   x <- cumsum(rnorm(20))
-  result <- hurst_mfdfa(x, q = c(-2, 0, 2), min_scale = 4L, max_scale = NULL, n_scales = 10L)
+  result <- hurst_mfdfa(
+    x, q = c(-2, 0, 2), min_scale = 4L, max_scale = NULL, n_scales = 10L
+  )
   expect_true(is.numeric(result$hurst))
 })
 
-test_that("hurst_mfdfa handles rms_vals all zero (line 526)", {
+test_that("hurst_mfdfa handles rms_vals all zero", {
   set.seed(42)
   # Constant series => perfect linear fit => zero residuals => zero rms
   x <- seq_len(30)
-  result <- hurst_mfdfa(x, q = c(-2, 0, 2), min_scale = 4L, max_scale = 7L, n_scales = 5L)
+  result <- hurst_mfdfa(
+    x, q = c(-2, 0, 2), min_scale = 4L, max_scale = 7L, n_scales = 5L
+  )
   expect_true(is.numeric(result$hurst))
 })
 
-test_that("hurst_mfdfa handles < 3 valid hq (lines 542-543)", {
+test_that("hurst_mfdfa handles < 3 valid hq", {
   set.seed(42)
   # Very few scales with valid data
   x <- cumsum(rnorm(20))
-  result <- hurst_mfdfa(x, q = c(-2, 0, 2), min_scale = 4L, max_scale = 5L, n_scales = 2L)
+  result <- hurst_mfdfa(
+    x, q = c(-2, 0, 2), min_scale = 4L, max_scale = 5L, n_scales = 2L
+  )
   # Some hq values may be NA
   expect_true(is.numeric(result$hurst) || is.na(result$hurst))
 })
 
-test_that("hurst rolling window adjusts boundaries (lines 242, 244)", {
+test_that("hurst rolling window adjusts boundaries", {
   set.seed(42)
   # Use a window size close to series length to trigger boundary adjustments
   x <- cumsum(rnorm(60))
@@ -441,7 +447,7 @@ test_that("hurst rolling window adjusts boundaries (lines 242, 244)", {
   expect_equal(nrow(h), 60L)
 })
 
-test_that("hurst rolling handles NA-heavy windows (line 248)", {
+test_that("hurst rolling handles NA-heavy windows", {
   set.seed(42)
   x <- cumsum(rnorm(100))
   # Insert many NAs in a block to trigger the >80% NA skip
@@ -451,7 +457,7 @@ test_that("hurst rolling handles NA-heavy windows (line 248)", {
   expect_equal(nrow(h), 100L)
 })
 
-test_that("hurst rolling handles try-error in computation (line 250)", {
+test_that("hurst rolling handles try-error in computation", {
   set.seed(42)
   # Very short constant segments can cause numerical issues
   x <- c(rep(0, 50), cumsum(rnorm(50)))
@@ -459,7 +465,7 @@ test_that("hurst rolling handles try-error in computation (line 250)", {
   expect_s3_class(h, "hurst")
 })
 
-test_that("hurst mfdfa rolling with internal gaps triggers interpolation (lines 287-289)", {
+test_that("hurst mfdfa rolling with internal gaps triggers interpolation", {
   set.seed(42)
   x <- cumsum(rnorm(150))
   # Step > 1 creates internal gaps that need interpolation
@@ -470,7 +476,7 @@ test_that("hurst mfdfa rolling with internal gaps triggers interpolation (lines 
   expect_true(any(!is.na(h$mf_width)))
 })
 
-test_that("build_state_rects_ handles empty data (lines 1381-1384)", {
+test_that("build_state_rects_ handles empty data", {
   empty_df <- data.frame(
     time = numeric(0), value = numeric(0),
     hurst = numeric(0), r_squared = numeric(0),
@@ -483,7 +489,7 @@ test_that("build_state_rects_ handles empty data (lines 1381-1384)", {
   expect_true("state_f" %in% names(result))
 })
 
-test_that("build_warning_rects_ handles empty data (lines 1417-1420)", {
+test_that("build_warning_rects_ handles empty data", {
   empty_df <- data.frame(
     time = numeric(0),
     warning_level = integer(0)
