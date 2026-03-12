@@ -1696,3 +1696,260 @@ potential_colors_ <- function() {
     density = "#4CAF50"
   )
 }
+
+#' Plot Resilience Results
+#'
+#' Visualizes resilience metric trajectories alongside the original time
+#' series, either as a combined ribbon plot or as faceted line plots.
+#'
+#' @details
+#' Two complementary visualizations are available:
+#'
+#' **`type = "ribbons"` (default).** Produces a single-panel plot combining
+#' the original time series (black line, upper portion) with a set of
+#' gradient-colored horizontal bands below it. Each band corresponds to one
+#' resilience metric (plus the composite score). Color at each time point
+#' encodes the directional score from [classify_resilience()], ranging from
+#' green ("Excellent") through yellow ("Fair") to red ("Troubled"). This
+#' layout answers the question *"when and where does the system shift between
+#' resilience states?"* at a glance, because all metrics share the same time
+#' axis. Requires classified data; call [classify_resilience()] first.
+#'
+#' **`type = "lines"`.** Produces a faceted plot with one panel per raw
+#' metric, each showing the metric's rolling-window value over time. No
+#' classification is needed. This view answers the question *"what is the
+#' raw trajectory of each metric?"* and is useful for diagnosing which
+#' metrics drive changes visible in the ribbon plot. Panels use free y-axes
+#' so that metrics on different scales are individually legible.
+#'
+#' @export
+#' @param x \[`resilience`\]\cr
+#'   An object of class `resilience`, optionally augmented by
+#'   [classify_resilience()] (required for `type = "ribbons"`).
+#' @param type \[`character(1)`: `"ribbons"`\]\cr
+#'   Plot type. The available options are:
+#'   * `"ribbons"`: Time series with gradient-colored risk ribbon below.
+#'     Requires classified data from [classify_resilience()].
+#'   * `"lines"`: Faceted line plots of raw metric values.
+#' @param ... Additional arguments (currently unused).
+#' @return A [ggplot2::ggplot()] object that can be further customized with
+#'   standard ggplot2 functions (e.g., `+ theme()`, `+ labs()`).
+#'
+#' @seealso [resilience()] for computing the metrics;
+#'   [classify_resilience()] for directional normalization required by the
+#'   ribbon plot.
+#' @examples
+#' \donttest{
+#' set.seed(20)
+#' x <- cumsum(rnorm(500))
+#' res <- resilience(x, window = 50L)
+#'
+#' # Faceted raw metric trajectories (no classification needed)
+#' plot(res, type = "lines")
+#'
+#' # Ribbon plot (requires classification first)
+#' cls <- classify_resilience(res)
+#' plot(cls, type = "ribbons")
+#' }
+plot.resilience <- function(x, type = "ribbons", ...) {
+  check_missing(x)
+  check_class(x, "resilience")
+  type <- check_match(type, c("ribbons", "lines"))
+  ifelse_(
+    type == "ribbons",
+    plot_resilience_ribbons_(x, ...),
+    plot_resilience_lines_(x, ...)
+  )
+}
+
+resilience_display_names <- function() {
+  c(
+    vsi            = "Stability",
+    arch_lm        = "Volatility",
+    cv             = "Variability",
+    recovery_time  = "Recovery time",
+    recovery_slope = "Recovery rate",
+    sample_entropy = "Complexity",
+    dfa_alpha      = "Memory",
+    ac_ratio       = "Correlation",
+    composite      = "OVERALL"
+  )
+}
+
+plot_resilience_ribbons_ <- function(x, show_metrics = NULL, ...) {
+  has_scores <- any(grepl("_score$", names(x)))
+  stopifnot_(
+    has_scores,
+    c(
+      "Resilience ribbon plot requires classified data.",
+      `i` = "Run {.fn classify_resilience} first."
+    )
+  )
+  display <- resilience_display_names()
+  all_metrics <- attr(x, "metrics")
+  # Default: exclude recovery_time and recovery_slope (matches original)
+  if (is.null(show_metrics)) {
+    plot_metrics <- all_metrics[
+      !all_metrics %in% c("recovery_time", "recovery_slope")
+    ]
+  } else if (length(show_metrics) == 1L && show_metrics == "all") {
+    plot_metrics <- all_metrics
+  } else {
+    plot_metrics <- show_metrics
+  }
+  # Order: composite first, then individual metrics
+  ordered_metrics <- c("composite", plot_metrics)
+  time_vals <- x[["time"]]
+  ts_vals   <- x[["value"]]
+  ts_range <- diff(range(ts_vals, na.rm = TRUE))
+  ts_min   <- min(ts_vals, na.rm = TRUE)
+  ts_max   <- max(ts_vals, na.rm = TRUE)
+  # Compress time series into upper 60% of its range
+  ts_compressed_range <- ts_range * 0.6
+  ts_new_max <- ts_max
+  ts_new_min <- ts_new_max - ts_compressed_range
+  # Ribbon sizing
+  ribbon_height  <- ts_range * 0.08
+  ribbon_spacing <- ribbon_height * 1.3
+  ribbon_start_y <- ts_new_min - ts_range * 0.15
+  ts_df <- data.frame(time = time_vals, value = ts_vals)
+  p <- ggplot2::ggplot(ts_df, ggplot2::aes(
+    x = !!rlang::sym("time"), y = !!rlang::sym("value")
+  )) +
+    ggplot2::geom_line(color = "black", linewidth = 0.5) +
+    ggplot2::labs(
+      title = "System Resilience Analysis",
+      x = "Time",
+      y = "Value"
+    ) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(
+      legend.position = "bottom",
+      legend.title = ggplot2::element_text(size = 10),
+      plot.title = ggplot2::element_text(size = 14, face = "bold"),
+      legend.text = ggplot2::element_text(size = 8),
+      axis.title = ggplot2::element_text(color = "black", face = "bold"),
+      axis.text = ggplot2::element_text(color = "black")
+    )
+  time_diff <- ifelse_(
+    length(time_vals) > 1L,
+    stats::median(diff(time_vals), na.rm = TRUE),
+    1
+  )
+  t_min <- min(time_vals, na.rm = TRUE)
+  t_max <- max(time_vals, na.rm = TRUE)
+  for (i in seq_along(ordered_metrics)) {
+    metric <- ordered_metrics[i]
+    score_col <- ifelse_(
+      metric == "composite",
+      "composite_score",
+      paste0(metric, "_score")
+    )
+    if (!score_col %in% names(x)) {
+      next
+    }
+    ribbon_y_bottom <- ribbon_start_y - (i * ribbon_spacing)
+    ribbon_y_center <- ribbon_y_bottom + ribbon_height / 2
+    scores <- x[[score_col]]
+    scores[is.na(scores)] <- -1
+    tile_df <- data.frame(
+      x = time_vals,
+      y = ribbon_y_center,
+      severity = scores
+    )
+    p <- p + ggplot2::geom_tile(
+      data   = tile_df,
+      ggplot2::aes(
+        x = !!rlang::sym("x"),
+        y = !!rlang::sym("y"),
+        fill = !!rlang::sym("severity")
+      ),
+      width  = time_diff,
+      height = ribbon_height,
+      alpha  = 0.8
+    )
+    label_color <- ifelse_(metric == "composite", "darkblue", "black")
+    label_size  <- ifelse_(metric == "composite", 3.5, 3)
+    disp_name  <- ifelse_(metric == "composite", "OVERALL", display[metric])
+    p <- p + ggplot2::annotate(
+      "text",
+      x = t_max + (t_max - t_min) / 70,
+      y = ribbon_y_center,
+      label = disp_name,
+      hjust = 0,
+      size = label_size,
+      fontface = "bold",
+      color = label_color
+    )
+  }
+  # Extend x-axis to make room for labels; set y limits
+  n_metrics <- length(ordered_metrics)
+  y_bottom  <- ribbon_start_y - (n_metrics * ribbon_spacing) - ribbon_height
+  p <- p +
+    ggplot2::coord_cartesian(
+      xlim = c(t_min, t_max + (t_max - t_min) / 6),
+      ylim = c(y_bottom, ts_new_max + ts_range * 0.1),
+      clip = "off"
+    ) +
+    ggplot2::scale_fill_gradientn(
+      colors = c(
+        "#cccccc",
+        "#2d7d32",
+        "#66bb6a",
+        "#ffeb99",
+        "#ffcc66",
+        "#ff9999",
+        "#cc0000"
+      ),
+      values = (c(-1, 0, 0.2, 0.4, 0.6, 0.8, 1.0) + 1) / 2,
+      name = "Resilience Level",
+      breaks = c(-1, 0, 0.2, 0.4, 0.6, 0.8, 1.0),
+      labels = c(
+        "Insufficient", "Excellent", "Solid", "Fair",
+        "Vulnerable", "Failing", "Troubled"
+      ),
+      na.value = "#cccccc",
+      guide = ggplot2::guide_colorbar(
+        title.position = "top",
+        title.hjust    = 0.5,
+        barwidth       = 24,
+        barheight      = 1
+      )
+    )
+  p
+}
+
+plot_resilience_lines_ <- function(x, ...) {
+  metrics <- attr(x, "metrics")
+  display <- resilience_display_names()
+  long <- tidyr::pivot_longer(
+    dplyr::select(x, !!rlang::sym("time"), tidyselect::all_of(metrics)),
+    cols = tidyselect::all_of(metrics),
+    names_to = "metric",
+    values_to = "score"
+  )
+  long <- dplyr::mutate(
+    long,
+    metric_label = factor(
+      display[!!rlang::sym("metric")],
+      levels = display[metrics]
+    )
+  )
+  ggplot2::ggplot(
+    long,
+    ggplot2::aes(
+      x = !!rlang::sym("time"),
+      y = !!rlang::sym("score"),
+      color = !!rlang::sym("metric_label")
+    )
+  ) +
+    ggplot2::geom_line(linewidth = 0.5) +
+    ggplot2::facet_wrap(
+      ggplot2::vars(!!rlang::sym("metric_label")),
+      scales = "free_y",
+      ncol = 2L
+    ) +
+    ggplot2::theme_minimal() +
+    ggplot2::labs(x = "Time", y = "Value", color = "Metric") +
+    ggplot2::theme(legend.position = "none")
+}

@@ -329,3 +329,18 @@ print.potential <- function(x, ...) {
   }
   invisible(x)
 }
+
+#' Print a Resilience Object
+#'
+#' Print method for `"resilience"` objects. Dispatches
+#' to the tibble print method, displaying the time series data and computed
+#' resilience metrics.
+#'
+#' @export
+#' @param x \[`resilience`\]\cr
+#'   A `resilience` object.
+#' @param ... Additional arguments passed to the tibble print method.
+#' @return `x`, invisibly.
+print.resilience <- function(x, ...) {
+  NextMethod(generic = "print", object = x, ...)
+}

@@ -199,7 +199,7 @@ test_that("detect_multivariate_warnings errors on non-numeric columns", {
 test_that("detect_multivariate_warnings errors on NA values", {
   na_df <- mews_df
   na_df$V1[10] <- NA
-  expect_error(detect_multivariate_warnings(na_df))
+  expect_error(detect_multivariate_warnings(na_df, time_col = "Time"))
 })
 
 test_that("custom time_col parameter works", {
