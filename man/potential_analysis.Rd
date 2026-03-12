@@ -2,8 +2,6 @@
 % Please edit documentation in R/potential.R
 \name{potential_analysis}
 \alias{potential_analysis}
-\alias{print.potential}
-\alias{summary.potential}
 \title{Stability Landscape and Potential Analysis}
 \usage{
 potential_analysis(
@@ -13,10 +11,6 @@ potential_analysis(
   bandwidth = NULL,
   detrend = "none"
 )
-
-\method{print}{potential}(x, ...)
-
-\method{summary}{potential}(object, ...)
 }
 \arguments{
 \item{data}{[\code{numeric} or \code{ts}]\cr
@@ -39,14 +33,6 @@ rule of thumb is used (the \code{stats::density()} default).}
 \item{detrend}{[\code{character(1)}: \code{"none"}]\cr
 Detrending method applied before estimating the landscape. One of
 \code{"none"}, \code{"linear"}, or \code{"diff"}.}
-
-\item{x}{[\code{potential}]\cr
-A \code{potential} object.}
-
-\item{...}{Additional arguments (currently unused).}
-
-\item{object}{[\code{potential}]\cr
-A \code{potential} object.}
 }
 \value{
 An object of class \code{"potential"} (a list) containing:
@@ -54,29 +40,24 @@ An object of class \code{"potential"} (a list) containing:
 \item \code{landscape}: [\code{tibble}] Grid of the estimated landscape with
 columns \code{x} (state-space position), \code{density} (probability
 density), and \code{potential} (\eqn{-\log(\mathrm{density})}).
-Present only for global analysis (\code{window = NULL}).}
-\item{wells}{[\code{tibble}] One row per detected well with columns
+Present only for global analysis (\code{window = NULL}).
+\item \code{wells}: [\code{tibble}] One row per detected well with columns
 \code{location} (x position), \code{depth} (barrier height minus well
 bottom), and \code{width} (distance between adjacent barriers).
-Present only for global analysis.}
-\item{barriers}{[\code{tibble}] One row per detected barrier with
+Present only for global analysis.
+\item \code{barriers}: [\code{tibble}] One row per detected barrier with
 columns \code{location} (x position) and \code{height} (potential value).
-Present only for global analysis.}
-\item{n_wells}{[\code{integer(1)}] Number of detected wells.}
-\item{values}{[\code{numeric()}] The (possibly detrended) data used
-for the analysis.}
-\item{time}{[\code{numeric()}] The time index.}
-\item{rolling}{[\code{tibble}] Present only for rolling analysis
+Present only for global analysis.
+\item \code{n_wells}: [\code{integer(1)}] Number of detected wells.
+\item \code{values}: [\code{numeric()}] The (possibly detrended) data used
+for the analysis.
+\item \code{time}: [\code{numeric()}] The time index.
+\item \code{rolling}: [\code{tibble}] Present only for rolling analysis
 (\code{window} specified). Contains columns \code{time}, \code{value},
-\code{n_wells}, and \code{dominant_well_location}.}
+\code{n_wells}, and \code{dominant_well_location}.
 
 Attributes: \code{n_bins}, \code{bandwidth}, \code{detrend}, \code{window}.
 }
-
-\code{x}, invisibly.
-
-A list with elements \code{wells}, \code{barriers}, \code{n_wells},
-\code{detrend}, \code{n_bins}, \code{bandwidth}, and \code{window}, returned invisibly.
 }
 \description{
 Estimates the quasi-potential landscape \eqn{U(x) = -\log P(x)} from
@@ -84,13 +65,6 @@ kernel density estimation, identifying stable attractors (potential
 wells) and unstable equilibria (barriers). Supports global analysis of
 the full series or rolling-window analysis to track how the number and
 location of attractors change over time.
-
-Prints a concise summary of the potential analysis: the number of
-wells and barriers, well locations, and analysis settings.
-
-Prints detailed information about each well and barrier in the
-estimated potential landscape, including location, depth, width,
-and height.
 }
 \details{
 The potential function is derived from the Boltzmann relation between
@@ -128,20 +102,15 @@ location of the dominant (deepest) well are tracked over time. Changes
 in the number of wells -- especially transitions from one to two wells
 or vice versa -- can signal an approaching bifurcation (tipping point).
 }
-\section{Functions}{
-\itemize{
-\item \code{print(potential)}: Print method for \code{"potential"} objects.
-
-\item \code{summary(potential)}: Summary method for \code{"potential"} objects.
-
-}}
 \examples{
 \donttest{
 # Single well: Ornstein-Uhlenbeck process (attractor at 0)
 set.seed(42)
 n <- 2000
 x <- numeric(n)
-for (i in 2:n) x[i] <- x[i-1] - 0.5 * x[i-1] * 0.01 + 0.3 * rnorm(1)
+for (i in 2:n) {
+  x[i] <- x[i-1] - 0.5 * x[i-1] * 0.01 + 0.3 * rnorm(1)
+}
 pa <- potential_analysis(x)
 pa
 plot(pa)
@@ -174,11 +143,4 @@ Westview Press.
 \code{\link[=resilience]{resilience()}} for rolling resilience metrics;
 \code{\link[=hurst]{hurst()}} for long-range dependence analysis;
 \code{\link[=compute_trend]{compute_trend()}} for trend classification.
-
-Other potential: 
-\code{\link{plot.potential}()}
 }
-\concept{potential}
-\concept{potential analysis}
-\concept{stability landscape}
-\concept{tipping points}

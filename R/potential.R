@@ -63,24 +63,23 @@
 #' @return An object of class `"potential"` (a list) containing:
 #'
 #' * `landscape`: \[`tibble`\] Grid of the estimated landscape with
-#'       columns `x` (state-space position), `density` (probability
-#'       density), and `potential` (\eqn{-\log(\mathrm{density})}).
-#'       Present only for global analysis (`window = NULL`).}
-#'     \item{wells}{\[`tibble`\] One row per detected well with columns
-#'       `location` (x position), `depth` (barrier height minus well
-#'       bottom), and `width` (distance between adjacent barriers).
-#'       Present only for global analysis.}
-#'     \item{barriers}{\[`tibble`\] One row per detected barrier with
-#'       columns `location` (x position) and `height` (potential value).
-#'       Present only for global analysis.}
-#'     \item{n_wells}{\[`integer(1)`\] Number of detected wells.}
-#'     \item{values}{\[`numeric()`\] The (possibly detrended) data used
-#'       for the analysis.}
-#'     \item{time}{\[`numeric()`\] The time index.}
-#'     \item{rolling}{\[`tibble`\] Present only for rolling analysis
-#'       (`window` specified). Contains columns `time`, `value`,
-#'       `n_wells`, and `dominant_well_location`.}
-#'
+#'   columns `x` (state-space position), `density` (probability
+#'   density), and `potential` (\eqn{-\log(\mathrm{density})}).
+#'   Present only for global analysis (`window = NULL`).
+#' * `wells`: \[`tibble`\] One row per detected well with columns
+#'   `location` (x position), `depth` (barrier height minus well
+#'   bottom), and `width` (distance between adjacent barriers).
+#'   Present only for global analysis.
+#' * `barriers`: \[`tibble`\] One row per detected barrier with
+#'   columns `location` (x position) and `height` (potential value).
+#'   Present only for global analysis.
+#' * `n_wells`: \[`integer(1)`\] Number of detected wells.
+#' * `values`: \[`numeric()`\] The (possibly detrended) data used
+#'   for the analysis.
+#' * `time`: \[`numeric()`\] The time index.
+#' * `rolling`: \[`tibble`\] Present only for rolling analysis
+#'   (`window` specified). Contains columns `time`, `value`,
+#'   `n_wells`, and `dominant_well_location`.
 #'
 #'   Attributes: `n_bins`, `bandwidth`, `detrend`, `window`.
 #'
@@ -103,17 +102,15 @@
 #' @seealso [resilience()] for rolling resilience metrics;
 #'   [hurst()] for long-range dependence analysis;
 #'   [compute_trend()] for trend classification.
-#' @family potential
-#' @concept stability landscape
-#' @concept potential analysis
-#' @concept tipping points
 #' @examples
 #' \donttest{
 #' # Single well: Ornstein-Uhlenbeck process (attractor at 0)
 #' set.seed(42)
 #' n <- 2000
 #' x <- numeric(n)
-#' for (i in 2:n) x[i] <- x[i-1] - 0.5 * x[i-1] * 0.01 + 0.3 * rnorm(1)
+#' for (i in 2:n) {
+#'   x[i] <- x[i-1] - 0.5 * x[i-1] * 0.01 + 0.3 * rnorm(1)
+#' }
 #' pa <- potential_analysis(x)
 #' pa
 #' plot(pa)
@@ -206,91 +203,6 @@ potential_analysis <- function(data, window = NULL, n_bins = 50L,
     window = window,
     class = c("potential", "list")
   )
-}
-
-
-# TODO fix
-#' Summarize Potential Analysis Results
-#'
-#' Prints detailed information about each well and barrier in the
-#' estimated potential landscape, including location, depth, width,
-#' and height.
-#'
-#' @describeIn potential_analysis Summary method for `"potential"` objects.
-#'
-#' @export
-#' @param object \[`potential`\]\cr
-#'   A `potential` object.
-#' @param ... Additional arguments (currently unused).
-#' @return A list with elements `wells`, `barriers`, `n_wells`,
-#'   `detrend`, `n_bins`, `bandwidth`, and `window`, returned invisibly.
-summary.potential <- function(object, ...) {
-  check_missing(object)
-  check_class(object, "potential")
-
-  cat("Potential Analysis Summary\n")
-  cat(paste0(rep("=", 50), collapse = ""), "\n")
-  cat("  Series length  :", length(object$values), "\n")
-  cat("  Detrending     :", attr(object, "detrend"), "\n")
-  cat("  Grid resolution:", attr(object, "n_bins") * 4L, "points\n")
-  bw_str <- ifelse_(
-    is.null(attr(object, "bandwidth")),
-    "auto (Silverman)",
-    as.character(round(attr(object, "bandwidth"), 4))
-  )
-  cat("  Bandwidth      :", bw_str, "\n")
-
-  cat("\n  Landscape topology\n")
-  cat(paste0("  ", rep("-", 40), collapse = ""), "\n")
-  cat("  Number of wells   :", object$n_wells, "\n")
-  cat("  Number of barriers:", nrow(object$barriers), "\n")
-
-  if (object$n_wells > 0L) {
-    cat("\n  Wells:\n")
-    for (i in seq_len(nrow(object$wells))) {
-      cat(sprintf(
-        "    [%d] location = %8.4f | depth = %8.4f | width = %8.4f\n",
-        i, object$wells$location[i],
-        object$wells$depth[i], object$wells$width[i]
-      ))
-    }
-  }
-
-  if (nrow(object$barriers) > 0L) {
-    cat("\n  Barriers:\n")
-    for (i in seq_len(nrow(object$barriers))) {
-      cat(sprintf(
-        "    [%d] location = %8.4f | height = %8.4f\n",
-        i, object$barriers$location[i], object$barriers$height[i]
-      ))
-    }
-  }
-
-  if (!is.null(object$rolling)) {
-    rolling <- object$rolling
-    valid_wells <- rolling$n_wells[!is.na(rolling$n_wells)]
-    cat("\n  Rolling-window analysis\n")
-    cat(paste0("  ", rep("-", 40), collapse = ""), "\n")
-    cat("  Window size        :", attr(object, "window"), "\n")
-    cat("  Min wells observed :", min(valid_wells), "\n")
-    cat("  Max wells observed :", max(valid_wells), "\n")
-    cat("  Mean wells         :", round(mean(valid_wells), 2), "\n")
-
-    # Count transitions in well number
-    well_diff <- diff(valid_wells)
-    n_transitions <- sum(well_diff != 0L, na.rm = TRUE)
-    cat("  Well-count changes :", n_transitions, "\n")
-  }
-
-  invisible(list(
-    wells = object$wells,
-    barriers = object$barriers,
-    n_wells = object$n_wells,
-    detrend = attr(object, "detrend"),
-    n_bins = attr(object, "n_bins"),
-    bandwidth = attr(object, "bandwidth"),
-    window = attr(object, "window")
-  ))
 }
 
 #' Find local minima in a numeric vector

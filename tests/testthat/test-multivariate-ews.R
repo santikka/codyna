@@ -166,7 +166,7 @@ test_that("detect_multivariate_warnings errors on numeric vector input", {
 
 test_that("detect_multivariate_warnings errors on data.frame with < 3 columns", {
   bad_df <- data.frame(Time = 1:50, V1 = rnorm(50))
-  expect_error(detect_multivariate_warnings(bad_df))
+  expect_error(detect_multivariate_warnings(bad_df, time_col = "Time"))
 })
 
 test_that("detect_multivariate_warnings errors on invalid method", {
@@ -193,7 +193,7 @@ test_that("detect_multivariate_warnings errors on non-numeric columns", {
   bad_df <- data.frame(
     Time = 1:50, V1 = rnorm(50), V2 = letters[1:50]
   )
-  expect_error(detect_multivariate_warnings(bad_df))
+  expect_error(detect_multivariate_warnings(bad_df, time_col = "Time"))
 })
 
 test_that("detect_multivariate_warnings errors on NA values", {

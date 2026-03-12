@@ -73,7 +73,7 @@
 #'   Rolling window size for local Hurst estimation when `states = TRUE`.
 #' @param step \[`integer(1)`: `1L`]\cr
 #'   Step size between consecutive windows.
-#' @param scaling \[`character(1)`: `"none"`}\cr
+#' @param scaling \[`character(1)`: `"none"`]\cr
 #'   Preprocessing applied to the data. The available options are:
 #'   `"none"`, `"center"`, `"standardize"`, `"minmax"`, and `"iqr"`.
 #' @param min_scale \[`integer(1)`: `4L`]\cr

@@ -285,43 +285,41 @@ print.summary.multi_ews <- function(x, ...) {
 #' Prints a concise summary of the potential analysis: the number of
 #' wells and barriers, well locations, and analysis settings.
 #'
-#' @describeIn potential_analysis Print method for `"potential"` objects.
-#'
 #' @export
 #' @param x \[`potential`\]\cr
 #'   A `potential` object.
 #' @param ... Additional arguments (currently unused).
 #' @return `x`, invisibly.
 print.potential <- function(x, ...) {
-  cat("Potential Analysis\n")
-  cat("  Detrend  :", attr(x, "detrend"), "\n")
-  cat("  N points :", length(x$values), "\n")
-  cat("  N bins   :", attr(x, "n_bins"), "\n")
+  cat("Potential Analysis\n\n")
+  cat("Detrend  :", attr(x, "detrend"), "\n")
+  cat("N points :", length(x$values), "\n")
+  cat("N bins   :", attr(x, "n_bins"), "\n")
   bw_str <- ifelse_(
     is.null(attr(x, "bandwidth")),
     "auto (Silverman)",
     as.character(round(attr(x, "bandwidth"), 4))
   )
-  cat("  Bandwidth:", bw_str, "\n")
+  cat("Bandwidth:", bw_str, "\n")
   win_str <- ifelse_(
     is.null(attr(x, "window")),
     "global",
     as.character(attr(x, "window"))
   )
-  cat("  Window   :", win_str, "\n")
-  cat("  Wells    :", x$n_wells, "\n")
-  cat("  Barriers :", nrow(x$barriers), "\n")
-
+  cat("Window   :", win_str, "\n")
+  cat("Wells    :", x$n_wells, "\n")
+  cat("Barriers :", nrow(x$barriers), "\n")
   if (x$n_wells > 0L) {
-    cat("\n  Well locations:\n")
+    cat("\nWell locations:\n")
     for (i in seq_len(nrow(x$wells))) {
-      cat(sprintf(
-        "    Well %d: x = %.4f  (depth = %.4f, width = %.4f)\n",
-        i, x$wells$location[i], x$wells$depth[i], x$wells$width[i]
-      ))
+      cat(
+        sprintf(
+          "Well %d: x = %.4f  (depth = %.4f, width = %.4f)\n",
+          i, x$wells$location[i], x$wells$depth[i], x$wells$width[i]
+        )
+      )
     }
   }
-
   if (!is.null(x$rolling)) {
     n_wells_range <- range(x$rolling$n_wells, na.rm = TRUE)
     cat(sprintf(
@@ -329,6 +327,5 @@ print.potential <- function(x, ...) {
       n_wells_range[1L], n_wells_range[2L]
     ))
   }
-
   invisible(x)
 }
