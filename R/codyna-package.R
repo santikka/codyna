@@ -7,7 +7,7 @@
 #' pattern identification, trends, regimes, sequence typology as well as
 #' early warning signals.
 #'
-#' @author Santtu Tikka and Mohammed Saqr
+#' @author Mohammed Saqr and Sonsoles López-Pernas
 #'
 "_PACKAGE"
 
@@ -44,7 +44,6 @@
 #' _Applied Psychological Measurement_. \doi{10.1177/01466216251348840}
 #'
 "group_regulation"
-
 
 #' Ecological Momentary Assessment (EMA) Data
 #'

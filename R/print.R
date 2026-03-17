@@ -156,7 +156,6 @@ print.hurst <- function(x, ...) {
 #'   A `hurst_ews` object as returned by [detect_hurst_warnings()].
 #' @param ... Additional arguments passed to the tibble print method.
 #' @return `x`, invisibly.
-#' @family hurst
 print.hurst_ews <- function(x, ...) {
   NextMethod(generic = "print", object = x, ...)
 }
@@ -343,4 +342,214 @@ print.potential <- function(x, ...) {
 #' @return `x`, invisibly.
 print.resilience <- function(x, ...) {
   NextMethod(generic = "print", object = x, ...)
+}
+
+#' Print a Sensitivity Object
+#'
+#' Print method for `"sensitivity_ews"` objects.
+#'   Dispatches to the tibble print method.
+#'
+#' @export
+#' @param x \[`sensitivity_ews`\]\cr
+#'   A `sensitivity_ews` object.
+#' @param ... Additional arguments passed to the tibble print method.
+#' @return `x`, invisibly.
+print.sensitivity_ews <- function(x, ...) {
+  NextMethod(generic = "print", object = x, ...)
+}
+
+#' Print a EWS Sensitivity Analysis Summary
+#'
+#' @export
+#' @param x \[`summary.sensitivity_ews`]\cr A `summary.sensitivity_ews` object.
+#' @param ... Not used.
+#' @return `x`, invisibly.
+print.summary.sensitivity_ews <- function(x, ...) {
+  cat("Sensitivity Analysis Summary\n\n")
+  cat("Metric        :", x$metric, "\n")
+  cat("Combinations  :", x$n_total, "\n")
+  cat(
+    "Tau range     : [", sprintf("%.4f", x$tau_range[1L]),
+    ", ", sprintf("%.4f", x$tau_range[2L]), "]\n", sep = ""
+  )
+  cat("Tau mean      :", sprintf("%.4f", x$tau_mean), "\n")
+  cat("Positive tau  : ", x$n_positive, "/", x$n_total, "\n", sep = "")
+  cat("Negative tau  : ", x$n_negative, "/", x$n_total, "\n\n", sep = "")
+  cat(
+    "Most robust   : window =", x$most_robust$window,
+    ", detrend =", x$most_robust$detrend,
+    ", tau =", sprintf("%.4f", x$most_robust$tau), "\n")
+  cat(
+    "Least robust  : window =", x$least_robust$window,
+    ", detrend =", x$least_robust$detrend,
+    ", tau =", sprintf("%.4f", x$least_robust$tau), "\n\n")
+  if (x$consistent) {
+    direction <- ifelse_(x$tau_mean > 0, "positive", "negative")
+    cat("Consistency   : ALL tau values are", direction, "\n")
+    cat("Assessment    : Signal is ROBUST across parameter choices.\n")
+  } else {
+    cat("Consistency   : Mixed signs detected\n")
+    cat(
+      "Assessment    : Signal DEPENDS on parameter choices;",
+      "interpret with caution.\n"
+    )
+  }
+}
+
+#' Print a Spectral EWS Analysis Results
+#'
+#' Print method for `"spectral"` objects. Dispatches to the tibble print method.
+#'
+#' @export
+#' @param x \[`spectral`\]\cr
+#'   A `spectral` object.
+#' @param ... Additional arguments passed to the tibble print method.
+#' @return `x`, invisibly.
+print.spectral <- function(x, ...) {
+  NextMethod(generic = "print", object = x, ...)
+}
+
+#' Print a Summary of Spectral EWS Analysis Results
+#'
+#' @export
+#' @param x \[`summary.spectral`]\cr A `summary.spectral` object.
+#' @param ... Not used.
+#' @return `x`, invisibly.
+print.summary.spectral <- function(x, ...) {
+  cat("Spectral Early Warning Signal Summary\n\n")
+  cat("Method  :", x$method, "\n")
+  cat("Detrend :", x$detrend, "\n")
+  cat("Window  :", x$window, "\n")
+  cat("Align   :", x$align, "\n")
+  cat("N       :", x$n, "\n\n")
+  cat("Mean spectral exponent (beta):", round(x$mean_beta, 4L), "\n")
+  cat("Mean spectral ratio          :", round(x$mean_ratio, 4L), "\n")
+  cat("Mean R-squared               :", round(x$mean_r_squared, 4L), "\n")
+  if (!is.null(x$state_counts)) {
+    props <- prop.table(x$state_counts)
+    cat("\nState distribution:\n\n")
+    for (i in seq_along(x$state_counts)) {
+      if (x$state_counts[i] > 0L) {
+        cat(
+          sprintf(
+            "    %-12s %5d  (%5.1f%%)\n",
+            names(x$state_counts)[i],
+            x$state_counts[i],
+            props[i] * 100
+          )
+        )
+      }
+    }
+  }
+  invisible(x)
+}
+
+#' Print a Surrogate Test Object
+#'
+#' Print method for `"surrogate_test"` objects. Displays the observed tau,
+#' p-value, significance, and method settings.
+#'
+#' @export
+#' @param x \[`surrogate_test`\]\cr
+#'   A `surrogate_test` object.
+#' @param ... Additional arguments (currently unused).
+#' @return `x`, invisibly.
+print.surrogate_test <- function(x, ...) {
+  check_missing(x)
+  check_class(x, "surrogate_test")
+  cat("Surrogate Significance Test\n\n")
+  cat("Method      :", x$method, "\n")
+  cat("Metric      :", x$metric, "\n")
+  cat("Window      :", x$window, "\n")
+  cat("Surrogates  :", x$n_surrogates, "\n")
+  cat("Observed tau:", round(x$observed_tau, 4L), "\n")
+  cat("p-value     :", surrogate_format_p_(x$p_value), "\n")
+  sig_label <- ifelse_(
+    is.na(x$significant), "NA",
+    ifelse_(x$significant, "YES (p < 0.05)", "NO (p >= 0.05)")
+  )
+  cat("Significant :", sig_label, "\n")
+  invisible(x)
+}
+
+#' Print a Summary of Surrogate Test Results
+#'
+#' @export
+#' @param x \[`summary.surrotate_test`]\cr A `summary.surrogate_test` object.
+#' @param ... Not used.
+#' @return `x`, invisibly.
+print.summary.surrogate_test <- function(x, ...) {
+  cat("Surrogate Test Summary\n\n")
+  cat("Method         :", x$method, "\n")
+  cat("Metric         :", x$metric, "\n")
+  cat("Window         :", x$window, "\n")
+  cat("Test           :", x$test, "\n")
+  cat("N surrogates   :", x$n_surrogates, "\n")
+  cat("Valid surrogates:", length(x$valid_taus), "\n\n")
+  cat("Observed:\n")
+  cat("  Kendall's tau  :", round(x$observed_tau, 4L), "\n")
+  cat("  p-value        :", surrogate_format_p_(x$p_value), "\n")
+  sig_label <- ifelse_(
+    is.na(x$significant), "NA",
+    ifelse_(x$significant, "YES (p < 0.05)", "NO (p >= 0.05)")
+  )
+  cat("Significant    :", sig_label, "\n\n")
+  cat("Surrogate distribution:\n\n")
+  cat("Mean           :", round(x$surr_mean, 4L), "\n")
+  cat("SD             :", round(x$surr_sd, 4L), "\n")
+  cat("Quantiles:\n")
+  q_names <- c("Min", "2.5%", "25%", "50%", "75%", "97.5%", "Max")
+  for (i in seq_along(surr_quantiles)) {
+    cat(sprintf("    %-6s : %8.4f\n", q_names[i], x$surr_quantiles[i]))
+  }
+  # Rank of observed tau within surrogates
+  if (length(x$valid_taus) > 0L && !is.na(x$observed_tau)) {
+    rank_pct <- mean(x$valid_taus <= x$observed_tau) * 100
+    cat(
+      sprintf(
+        "\n  Observed tau ranks at the %.1f%% percentile of surrogates.\n",
+        rank_pct
+      )
+    )
+  }
+}
+
+#' Print a Trend Object
+#'
+#' Print method for `"trend"` objects. Dispatches to the tibble print method.
+#'
+#' @export
+#' @param x \[`trend`\]\cr
+#'   A `trend` object.
+#' @param ... Additional arguments passed to the tibble print method.
+#' @return `x`, invisibly.
+print.trend <- function(x, ...) {
+  NextMethod(generic = "print", object = x, ...)
+}
+
+#' Print a Trend Classification Summary
+#'
+#' @export
+#' @param x \[`summary.trend`]\cr A `summary.trend` object.
+#' @param ... Not used.
+#' @return `x`, invisibly.
+print.summary.trend <- function(x, ...) {
+  cat("Trend Classification Summary\n\n")
+  cat("Method :", x$method, "\n")
+  cat("Window :", x$window, "\n")
+  cat("Align  :", x$align, "\n")
+  cat("N      :", x$n, "\n\n")
+  cat("State distribution:\n")
+  for (i in seq_along(x$counts)) {
+    if (x$counts[i] > 0L) {
+      cat(
+        sprintf(
+          "  %-12s %5d  (%5.1f%%)\n",
+          names(x$counts)[i],
+          x$counts[i],
+          x$props[i] * 100
+        )
+      )
+    }
+  }
 }

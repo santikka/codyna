@@ -473,7 +473,7 @@ test_that("resilience_dfa_alpha returns NA for short series", {
   expect_true(is.na(result))
 })
 
-test_that("resilience_dfa_alpha with NULL max_scale (line 468)", {
+test_that("resilience_dfa_alpha with NULL max_scale", {
   set.seed(42)
   x <- cumsum(rnorm(100))
   result <- resilience_dfa_alpha(
@@ -744,12 +744,8 @@ test_that("resilience_recovery_slope handles shock with < 2 valid points", {
   expect_true(is.numeric(result) || is.na(result))
 })
 
-test_that("resilience_recovery_slope handles lm try-error (line 405)", {
+test_that("resilience_recovery_slope handles lm try-error", {
   set.seed(42)
-  # This is a safety net. lm() is very robust and hard to make fail.
-  # With only 2 valid points, lm still works (perfect fit).
-  # The try-error path is essentially unreachable under normal conditions.
-  # Just verify function works with valid shock data.
   x <- c(rnorm(10, sd = 1), 15, seq(10, 0, length.out = 5), rnorm(10, sd = 0.5))
   result <- resilience_recovery_slope(
     x, shock_threshold = 2, recovery_window = 5L, baseline_window = 10L
@@ -759,54 +755,18 @@ test_that("resilience_recovery_slope handles lm try-error (line 405)", {
 
 test_that("resilience_sample_entropy handles create_embedded with num_vec <= 0", {
   set.seed(42)
-  # num_vec = nn - (m - 1) * delay
-  # For vectors_m1: m = edim + 1, delay = tau.
-  # num_vec = n - edim * tau
-  # If n <= edim * tau, line 420 catches it first.
-  # If n = edim * tau + 1: num_vec = 1 for m1, triggers line 450 (n_m1 < 2).
-  # For create_embedded to return empty matrix (line 425),
-  # num_vec <= 0, meaning n <= (m-1)*delay.
-  # For vectors_m (m=edim): num_vec = n - (edim-1)*tau
-  # For vectors_m1 (m=edim+1): num_vec = n - edim*tau
-  # The earliest check is n <= edim*tau at line 420.
-  # If n = edim*tau + 1, then for m1: num_vec = 1, not <= 0.
-  # Line 425 can only trigger if called internally with m such that
-  # n - (m-1)*delay <= 0, but that would need m > (n/delay) + 1.
-  # Given edim >= 2 and tau >= 1, m1 = edim+1 >= 3.
-  # n > edim*tau, so n > (m1-1)*tau = edim*tau only when m1 = edim+1.
-  # Wait: n > edim*tau means n - edim*tau > 0, which is num_vec for m1.
-  # So num_vec > 0 always for vectors_m1 given the guard at line 420.
-  # For vectors_m: num_vec = n - (edim-1)*tau. Since n > edim*tau,
-  # n - (edim-1)*tau = n - edim*tau + tau > tau > 0.
-  # So line 425 is never reached. It's dead code.
-  # Just verify function works.
   result <- resilience_sample_entropy(rnorm(20), edim = 2L, tau = 1L)
   expect_true(is.numeric(result))
 })
 
 test_that("resilience_sample_entropy handles count_matches with nv < 2", {
   set.seed(42)
-  # count_matches is called with vectors_m_trunc (truncated to n_m1 rows)
-  # and vectors_m1.
-  # n_m1 = n - edim*tau. If n_m1 = 2, then vectors_m_trunc has 2 rows
-  # and vectors_m1 has 2 rows, so nv = 2, not < 2.
-  # If n_m1 = 1, line 450 triggers first.
-  # So count_matches always gets nv >= 2. Line 436 is dead code.
-  # But count_matches is called for BOTH A and B, and both get vectors
-  # with n_m1 rows (>= 2). So nv < 2 is unreachable.
   result <- resilience_sample_entropy(rnorm(15), edim = 2L, tau = 1L)
   expect_true(is.numeric(result))
 })
 
-# ==========================================================================
-# Targeted coverage: resilience.R lines 483-484 -- dfa_alpha n_seg < 3
-# ==========================================================================
-
 test_that("resilience_dfa_alpha triggers n_seg < 3", {
   set.seed(42)
-  # n_seg = floor(n/s). For n_seg < 3, need s > n/3.
-  # With n = 40, min_scale = 4, max_scale = 15:
-  # Some scales near 15: floor(40/15) = 2 < 3 => triggers line 483.
   x <- cumsum(rnorm(40))
   result <- resilience_dfa_alpha(
     x, min_scale = 4L, max_scale = 15L, min_obs = 15L, min_r_squared = 0.0
@@ -816,14 +776,6 @@ test_that("resilience_dfa_alpha triggers n_seg < 3", {
 
 test_that("resilience_dfa_alpha handles all_residuals empty", {
   set.seed(42)
-  # all_residuals is empty when all lm fits fail (try-error).
-  # lm(segment ~ poly(tp, 1, raw = TRUE)) rarely fails.
-  # This line is a safety net. To trigger it, we'd need lm to fail
-  # for EVERY segment of a given scale, which requires extreme data.
-  # With all-NA data after cumsum... no, cumsum propagates NAs.
-  # With all-zero data, lm fits fine (residuals = 0 not NA).
-  # This is effectively dead code as a safety net.
-  # Verify function works.
   x <- cumsum(rnorm(50))
   result <- resilience_dfa_alpha(
     x, min_scale = 4L, max_scale = 12L, min_obs = 15L, min_r_squared = 0.0

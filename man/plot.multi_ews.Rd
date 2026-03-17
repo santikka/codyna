@@ -54,5 +54,3 @@ plot(ews, include_dr = FALSE)
 \seealso{
 \code{\link[=detect_multivariate_warnings]{detect_multivariate_warnings()}} for computing the EWS.
 }
-\concept{early warning signals}
-\concept{multivariate EWS}

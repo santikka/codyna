@@ -332,11 +332,6 @@ test_that("potential_landscape_ falls back to global min when no interior minimu
   expect_true(nrow(result$wells) == 1L)
 })
 
-#  w_clean < 20 in rolling loop
-# These lines require window data with NAs so that fewer than 20 clean values
-# remain. The exported function's global landscape call (line 402) also gets
-# NAs, so we mock potential_landscape_ to handle NAs gracefully.
-
 test_that("rolling window marks NA when w_clean < 20 via mocked landscape", {
   original_fn <- potential_landscape_
   local_mocked_bindings(

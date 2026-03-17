@@ -30,7 +30,7 @@
 #'  4. `recovery_time` Median number of time steps required to return within
 #'     a threshold of the baseline after a shock event. Shocks are detected as
 #'     deviations exceeding `shock_threshold` baseline standard deviations.
-#'     Lower values indicate faster recovery and better resilience.}
+#'     Lower values indicate faster recovery and better resilience.
 #'  5. `recovery_slope` Median OLS slope of the series over a short window
 #'     immediately following each detected shock. Positive slopes indicate
 #'     upward recovery toward baseline; the sign and magnitude together convey
@@ -46,7 +46,7 @@
 #'     fluctuation plot from Detrended Fluctuation Analysis (Peng et al.,
 #'     1994). Values near 0.5 indicate uncorrelated noise; values near 1.0
 #'     indicate \eqn{1/f} noise; values near 1.5 indicate Brownian motion.
-#'     Lower values (closer to white noise) indicate better resilience.}
+#'     Lower values (closer to white noise) indicate better resilience.
 #'  8. `ac_ratio` (Autocorrelation Ratio) \eqn{|\mathrm{acf}[1]| /
 #'     \mathrm{mean}(|\mathrm{acf}[2{:}k]|)}, the ratio of lag-1
 #'     autocorrelation magnitude to the mean magnitude of higher-order lags.
@@ -104,7 +104,6 @@
 #'   * `sample_entropy`: Sample Entropy (if requested).
 #'   * `dfa_alpha`: DFA scaling exponent (if requested).
 #'   * `ac_ratio`: Autocorrelation Ratio (if requested).
-#'
 #'
 #'   The returned object carries three attributes:
 #'

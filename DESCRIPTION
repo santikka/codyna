@@ -1,6 +1,6 @@
 Package: codyna
 Title: Complex Dynamic Systems
-Version: 0.2.0
+Version: 1.0.0
 Authors@R: c(
     person("Mohammed", "Saqr", role = "aut"),
     person("Santtu", "Tikka", email = "santtuth@gmail.com", role = c("aut", "cre")),

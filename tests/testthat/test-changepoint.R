@@ -1,9 +1,5 @@
-# --- Test data ---------------------------------------------------------------
-
 set.seed(0)
 cpt_data <- c(rnorm(100, 0, 1), rnorm(100, 5, 1))
-
-# --- Basic output structure --------------------------------------------------
 
 test_that("detect_cpts returns a changepoint tibble", {
   result <- detect_cpts(cpt_data)
@@ -39,8 +35,6 @@ test_that("segment column is sequential integer", {
   expect_identical(segments, seq_len(max(segments)))
 })
 
-# --- Attributes --------------------------------------------------------------
-
 test_that("attributes are stored correctly", {
   result <- detect_cpts(cpt_data, method = "pelt", penalty = "bic")
   expect_identical(attr(result, "method"), "pelt")
@@ -51,8 +45,6 @@ test_that("attributes are stored correctly", {
   expect_identical(attr(result, "min_segment"), 10L)
 })
 
-# --- Detection accuracy ------------------------------------------------------
-
 test_that("detect_cpts finds changepoint near known shift", {
   result <- detect_cpts(cpt_data, method = "pelt")
   locs <- attr(result, "changepoint_locations")
@@ -61,8 +53,6 @@ test_that("detect_cpts finds changepoint near known shift", {
   closest <- locs[which.min(abs(locs - 100))]
   expect_true(abs(closest - 100) <= 15)
 })
-
-# --- Methods -----------------------------------------------------------------
 
 test_that("cusum method works", {
   result <- detect_cpts(cpt_data, method = "cusum")
@@ -82,8 +72,6 @@ test_that("pelt method works", {
   expect_true(attr(result, "n_changepoints") >= 1L)
 })
 
-# --- Type options ------------------------------------------------------------
-
 test_that("type mean detects mean shift", {
   result <- detect_cpts(cpt_data, type = "mean")
   expect_s3_class(result, "changepoint")
@@ -102,8 +90,6 @@ test_that("type both works", {
   expect_s3_class(result, "changepoint")
   expect_true(attr(result, "n_changepoints") >= 1L)
 })
-
-# --- Penalty options ---------------------------------------------------------
 
 test_that("bic penalty works", {
   result <- detect_cpts(cpt_data, penalty = "bic")
@@ -126,8 +112,6 @@ test_that("manual penalty without penalty_value errors", {
     "penalty_value"
   )
 })
-
-# --- S3 methods --------------------------------------------------------------
 
 test_that("print does not error", {
   result <- detect_cpts(cpt_data)
@@ -163,8 +147,6 @@ test_that("plot does not error", {
     expect_error(NA)
 })
 
-# --- Input validation --------------------------------------------------------
-
 test_that("bad method produces error", {
   expect_error(
     detect_cpts(cpt_data, method = "nonexistent"),
@@ -185,8 +167,6 @@ test_that("bad penalty produces error", {
     "penalty"
   )
 })
-
-# --- changepoint_cost_ edge cases --------------------------------------------
 
 test_that("changepoint_cost_ returns 0 for segment with fewer than 2 obs", {
   expect_equal(changepoint_cost_(5, "mean"), 0)
@@ -212,8 +192,6 @@ test_that("changepoint_cost_ default branch falls through", {
   expect_equal(result, expected)
 })
 
-# --- changepoint_penalty_ edge cases  ---------------------------------------
-
 test_that("changepoint_penalty_ manual with non-numeric value errors", {
   # manual penalty with NULL or non-numeric penalty_value
   expect_error(changepoint_penalty_("manual", NULL, 100, "mean"))
@@ -227,15 +205,11 @@ test_that("changepoint_penalty_ default branch returns BIC-like penalty", {
   expect_equal(result, 2 * log(100))
 })
 
-# --- changepoint_best_split_ edge cases --------------------------------------
-
 test_that("changepoint_best_split_ returns NULL for short segment", {
   # n < 2 * min_segment
   result <- changepoint_best_split_(c(1, 2, 3), "mean", 5)
   expect_null(result)
 })
-
-# --- changepoint_cusum_ max_cpt limit ----------------------------------------
 
 test_that("changepoint_cusum_ returns empty when max_cpt is 0", {
   set.seed(0)
@@ -254,8 +228,6 @@ test_that("changepoint_cusum_ budget decrements after left recursion", {
   expect_true(length(result) <= 2L)
 })
 
-# --- changepoint_binseg_ edge cases  -----------------------------------------
-
 test_that("changepoint_binseg_ returns empty for short segment", {
   # n < 2 * min_segment
   result <- changepoint_binseg_(c(1, 2, 3), "mean", 1, 5, NULL, 0L)
@@ -271,10 +243,6 @@ test_that("changepoint_binseg_ returns empty when max_cp is 0", {
 })
 
 test_that("changepoint_binseg_ handles NULL best_split result", {
-  # result is NULL from best_split (segment barely meeting 2*min_segment
-  # but best_split still returns NULL when n == 2*min_segment and no candidate exists)
-  # With min_segment = 5 and n = 10, there's only one split candidate at tau = 5
-  # If the gain is below penalty, it returns integer(0)
   result <- changepoint_binseg_(rep(0, 10), "mean", 1000, 5, NULL, 0L)
   expect_length(result, 0L)
 })
@@ -286,8 +254,6 @@ test_that("changepoint_binseg_ budget decrements after left recursion", {
   result <- changepoint_binseg_(x, "mean", 0.5, 5, 2L, 0L)
   expect_true(length(result) <= 2L)
 })
-
-# --- changepoint_pelt_ edge cases --------------------------------------------
 
 test_that("changepoint_pelt_ returns empty for short segment", {
   # n < 2 * min_segment
@@ -316,8 +282,6 @@ test_that("changepoint_pelt_ enforces max_cp by pruning excess changepoints", {
   expect_equal(length(result_limited), 1L)
 })
 
-# --- detect_cpts: max_changepoints validation --------------- ----------------
-
 test_that("detect_cpts validates max_changepoints parameter", {
   set.seed(0)
   x <- c(rnorm(100, 0, 1), rnorm(100, 5, 1))
@@ -333,8 +297,6 @@ test_that("detect_cpts max_changepoints out of range errors", {
   # max_changepoints must be >= 1
   expect_error(detect_cpts(x, max_changepoints = 0L))
 })
-
-# --- detect_cpts: changepoints too close filtering  --------------------------
 
 test_that("changepoints too close to each other are filtered", {
   # keep[i] <- FALSE when consecutive cpts are too close
@@ -356,8 +318,6 @@ test_that("changepoints too close to each other are filtered", {
     expect_true(all(diffs >= 5L))
   }
 })
-
-# --- detect_cpts: variance type with methods that trigger cost branches ------
 
 test_that("variance type with binary_segmentation covers cost branches", {
   set.seed(0)
@@ -396,8 +356,6 @@ test_that("type variance with cusum covers cost branches", {
   expect_s3_class(result, "changepoint")
 })
 
-# --- detect_cpts: no changepoints detected produces valid output -------------
-
 test_that("no changepoints detected returns single segment", {
   set.seed(0)
   # Very high manual penalty: no split will be accepted
@@ -408,8 +366,6 @@ test_that("no changepoints detected returns single segment", {
   expect_true(all(result$segment == 1L))
   expect_false(any(result$changepoint))
 })
-
-# --- summary with changepoints: change details (lines around 993-1021) -------
 
 test_that("summary returns change details when changepoints exist", {
   set.seed(0)
@@ -434,8 +390,6 @@ test_that("summary with no changepoints returns NULL changes", {
   expect_null(s$changes)
 })
 
-# --- plot: fallback color for unknown state names ----------------------------
-
 test_that("plot handles state levels that fall back to cycling colors", {
   set.seed(0)
   x <- c(rnorm(100, 0, 1), rnorm(100, 5, 1))
@@ -448,11 +402,6 @@ test_that("plot handles state levels that fall back to cycling colors", {
   expect_true(inherits(p, "gg") || inherits(p, "ggplot"))
 })
 
-# --- dead code guards in best_split_ and binseg_ -----------------------------
-
-# These lines are unreachable guard clauses (best_pos will never be NULL when
-# n >= 2*min_segment). We test them directly with mocked edge scenarios.
-
 test_that("best split always finds a position when n >= 2*min_segment", {
   # Confirm that best_split always returns a non-NULL result for valid n
   x <- rep(0, 20)
@@ -462,8 +411,6 @@ test_that("best split always finds a position when n >= 2*min_segment", {
   expect_true(is.list(result))
   expect_true("pos" %in% names(result))
 })
-
-# --- changepoints too close to each other ------------------------------------
 
 test_that("cpts too close are filtered via cusum with tight data", {
   # cusum can produce changepoints at positions that, when combined,
@@ -493,13 +440,6 @@ test_that("cpts too close are filtered via cusum with tight data", {
   }
 })
 
-# --- changepoint_best_split_ defensive guard (best_pos NULL) -----------------
-
-# This guard is unreachable because best_gain starts at -Inf and
-# any finite cost difference sets best_pos. The for loop always has at least
-# one candidate when n >= 2*min_segment. We verify the guard exists by showing
-# the function always finds a split for valid inputs.
-
 test_that("changepoint_best_split_ always sets best_pos for valid n", {
   # Even constant data produces a valid split
   # (gain = 0, pos set to first candidate)
@@ -511,25 +451,11 @@ test_that("changepoint_best_split_ always sets best_pos for valid n", {
   expect_equal(result$gain, 0)
 })
 
-# --- changepoint_binseg_ defensive guard (NULL from best_split) --------------
-
-# This guard is unreachable because changepoint_binseg_ checks n < 2*min_segment
-# before calling best_split, and best_split always returns non-NULL
-# when n >= 2*min_segment. We verify binseg returns the correct result when
-# best_split gain is below penalty (branch instead).
-
 test_that("changepoint_binseg_ returns empty when gain below penalty", {
   # Constant data: best_split returns gain = 0, which is <= any positive penalty
   result <- changepoint_binseg_(rep(0, 20), "mean", 1, 5, NULL, 0L)
   expect_length(result, 0L)
 })
-
-# --- changepoint close-spacing filter (defensive guard) ----------------------
-
-# All three methods (cusum, binseg, pelt) internally guarantee that adjacent
-# changepoints are at least min_segment apart. The post-filter is
-# a safety net that is never triggered in practice. We verify the filter logic
-# by confirming that all detected changepoints respect min_segment spacing.
 
 test_that("all methods produce changepoints respecting min_segment spacing", {
   set.seed(0)

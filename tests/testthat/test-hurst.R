@@ -280,7 +280,7 @@ test_that("hurst_scale iqr with iqr=0 returns median-centered values", {
   expect_true(all(result == 0))
 })
 
-test_that("hurst_dfa handles NAs in input (line 350)", {
+test_that("hurst_dfa handles NAs in input", {
   set.seed(42)
   x <- cumsum(rnorm(100))
   x[c(5, 10, 15)] <- NA
@@ -298,7 +298,7 @@ test_that("hurst_dfa returns NA for too-short series", {
   expect_equal(length(result$scales), 0L)
 })
 
-test_that("hurst_dfa adjusts min_scale below 4 (line 356)", {
+test_that("hurst_dfa adjusts min_scale below 4", {
   set.seed(42)
   x <- cumsum(rnorm(100))
   result <- hurst_dfa(x, min_scale = 2L, max_scale = 25L, n_scales = 10L)
@@ -306,14 +306,14 @@ test_that("hurst_dfa adjusts min_scale below 4 (line 356)", {
   expect_true(!is.na(result$hurst))
 })
 
-test_that("hurst_dfa handles NULL max_scale (line 358)", {
+test_that("hurst_dfa handles NULL max_scale", {
   set.seed(42)
   x <- cumsum(rnorm(100))
   result <- hurst_dfa(x, min_scale = 4L, max_scale = NULL, n_scales = 10L)
   expect_true(is.numeric(result$hurst))
 })
 
-test_that("hurst_dfa adjusts max_scale > n/2 (line 360)", {
+test_that("hurst_dfa adjusts max_scale > n/2", {
   set.seed(42)
   x <- cumsum(rnorm(50))
   result <- hurst_dfa(x, min_scale = 4L, max_scale = 40L, n_scales = 10L)
@@ -357,7 +357,7 @@ test_that("hurst_dfa returns NA with < 3 valid fluctuations", {
   expect_true(is.numeric(result$hurst))
 })
 
-test_that("hurst_rs handles NULL max_scale (line 450)", {
+test_that("hurst_rs handles NULL max_scale", {
   set.seed(42)
   x <- cumsum(rnorm(100))
   result <- hurst_rs(x, min_scale = 4L, max_scale = NULL,
@@ -391,7 +391,7 @@ test_that("hurst_rs returns NA with < 3 valid rs values", {
   expect_true(is.na(result$hurst) || is.numeric(result$hurst))
 })
 
-test_that("hurst_mfdfa handles NULL max_scale (line 501)", {
+test_that("hurst_mfdfa handles NULL max_scale", {
   set.seed(42)
   x <- cumsum(rnorm(100))
   result <- hurst_mfdfa(x, q = seq(-2, 2, 1), min_scale = 4L, max_scale = NULL, n_scales = 10L)
@@ -407,7 +407,7 @@ test_that("hurst_mfdfa returns NA when max_scale < min_scale", {
   expect_equal(length(result$hq), 0L)
 })
 
-test_that("hurst_mfdfa handles n_seg < 1 (line 516)", {
+test_that("hurst_mfdfa handles n_seg < 1", {
   set.seed(42)
   # Short series where some scales have n_seg < 1
   x <- cumsum(rnorm(20))
@@ -501,7 +501,7 @@ test_that("build_warning_rects_ handles empty data", {
   expect_true("level" %in% names(result))
 })
 
-test_that("hurst_mfdfa skips scale when all rms_vals == 0 (line 526)", {
+test_that("hurst_mfdfa skips scale when all rms_vals == 0", {
   set.seed(42)
   # Constant data: cumsum(x - mean(x)) = 0 for all positions.
   # Each segment is all zeros, lm.fit residuals = 0, rms_vals = 0.

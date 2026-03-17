@@ -125,3 +125,160 @@ summary.multi_ews <- function(object, ...) {
     class = c("summary.multi_ews", "data.frame")
   )
 }
+
+#' Summarize EWS Sensitivity Analysis Results
+#'
+#' Summary method for `"sensitivity_ews"` objects. Computes the range of
+#' Kendall tau values, identifies the most and least robust parameter
+#' combinations, and assesses overall consistency.
+#'
+#' @export
+#' @param object \[`sensitivity_ews`\]\cr
+#'   A `sensitivity_ews` object.
+#' @param ... Additional arguments (currently unused).
+#' @return A list with elements `metric`, `tau_range`, `tau_mean`,
+#'   `n_positive`, `n_negative`, `n_total`, `most_robust` (combination
+#'   with highest |tau|), `least_robust` (combination with lowest |tau|),
+#'   and `consistent` (logical), returned invisibly.
+summary.sensitivity_ews <- function(object, ...) {
+  check_missing(object)
+  check_class(object, "sensitivity_ews")
+  metric_name <- attr(object, "metric") %||% "unknown"
+  tau_df <- unique(object[, c("window", "detrend", "tau")])
+  tau_vals <- tau_df$tau[!is.na(tau_df$tau)]
+  n_total <- length(tau_vals)
+  n_positive <- sum(tau_vals > 0)
+  n_negative <- sum(tau_vals < 0)
+  tau_mean <- mean(tau_vals, na.rm = TRUE)
+  tau_range <- range(tau_vals, na.rm = TRUE)
+  # Most robust: highest absolute tau
+  abs_tau <- abs(tau_df$tau)
+  most_idx <- which.max(abs_tau)
+  least_idx <- which.min(abs_tau)
+  most_robust <- tau_df[most_idx, ]
+  least_robust <- tau_df[least_idx, ]
+  # Consistency: all tau values have the same sign
+  consistent <- n_total > 0L && (n_positive == n_total || n_negative == n_total)
+  structure(
+    list(
+      metric = metric_name,
+      tau_range = tau_range,
+      tau_mean = tau_mean,
+      n_positive = n_positive,
+      n_negative = n_negative,
+      n_total = n_total,
+      most_robust = most_robust,
+      least_robust = least_robust,
+      consistent = consistent
+    ),
+    class = "summary.sensitivity_ews"
+  )
+}
+
+#' Summarize Spectral EWS Analysis Results
+#'
+#' Summary method for `"spectral"` objects. Shows the state distribution,
+#' mean spectral exponent, and analysis settings.
+#'
+#' @export
+#' @param object \[`spectral`\]\cr
+#'   A `spectral` object.
+#' @param ... Additional arguments (currently unused).
+#' @return A list with elements `mean_beta`, `mean_ratio`, `mean_r_squared`,
+#'   `state_counts` (if states present), `window`, `method`, `detrend`, and
+#'   `align`, returned invisibly.
+summary.spectral <- function(object, ...) {
+  check_missing(object)
+  check_class(object, "spectral")
+  mean_beta <- mean(object$spectral_exponent, na.rm = TRUE)
+  mean_ratio <- mean(object$spectral_ratio, na.rm = TRUE)
+  mean_r2 <- mean(object$r_squared, na.rm = TRUE)
+  state_counts <- NULL
+  if ("state" %in% names(object)) {
+    state_counts <- table(object$state)
+  }
+  structure(
+    list(
+      n = nrow(object),
+      mean_beta = mean_beta,
+      mean_ratio = mean_ratio,
+      mean_r_squared = mean_r2,
+      state_counts = state_counts,
+      window = attr(object, "window"),
+      method = attr(object, "method"),
+      detrend = attr(object, "detrend"),
+      align = attr(object, "align")
+    ),
+    class = "summary.spectral"
+  )
+}
+
+#' Summarize Surrogate Test Results
+#'
+#' Summary method for `"surrogate_test"` objects. Provides detailed statistics
+#' of the surrogate distribution including quantiles and the position of the
+#' observed value.
+#'
+#' @export
+#' @param object \[`surrogate_test`\]\cr
+#'   A `surrogate_test` object.
+#' @param ... Additional arguments (currently unused).
+#' @return A list with elements `observed_tau`, `p_value`, `significant`,
+#'   `surrogate_quantiles` (named numeric vector), `surrogate_mean`,
+#'   `surrogate_sd`, `method`, `metric`, `window`, and `n_surrogates`.
+summary.surrogate_test <- function(object, ...) {
+  check_missing(object)
+  check_class(object, "surrogate_test")
+  valid_taus <- object$surrogate_taus[!is.na(object$surrogate_taus)]
+  surr_quantiles <- stats::quantile(
+    valid_taus, probs = c(0, 0.025, 0.25, 0.5, 0.75, 0.975, 1),
+    na.rm = TRUE
+  )
+  surr_mean <- mean(valid_taus, na.rm = TRUE)
+  surr_sd <- stats::sd(valid_taus, na.rm = TRUE)
+  structure(
+    list(
+      observed_tau = object$observed_tau,
+      valid_taus = valid_taus,
+      p_value = object$p_value,
+      significant = object$significant,
+      surrogate_quantiles = surr_quantiles,
+      surrogate_mean = surr_mean,
+      surrogate_sd = surr_sd,
+      method = object$method,
+      metric = object$metric,
+      window = object$window,
+      n_surrogates = object$n_surrogates
+    ),
+    class = "summary.surrogate_test"
+  )
+}
+
+#' Summarize Trend Classification Results
+#'
+#' Summary method for `"trend"` objects. Shows the distribution of trend
+#' classifications and the analysis settings.
+#'
+#' @export
+#' @param object \[`trend`\]\cr
+#'   A `trend` object.
+#' @param ... Additional arguments (currently unused).
+#' @return A list with elements `counts` (frequency table of states),
+#'   `proportions` (relative frequencies), `window`, `method`, and `align`.
+summary.trend <- function(object, ...) {
+  check_missing(object)
+  check_class(object, "trend")
+  counts <- table(object$state)
+  props  <- prop.table(counts)
+  structure(
+    list(
+      n = nrow(object),
+      counts = counts,
+      proportions = props,
+      window = attr(object, "window"),
+      method = attr(object, "method"),
+      align = attr(object, "align")
+    ),
+    class = "summary.trend"
+  )
+}

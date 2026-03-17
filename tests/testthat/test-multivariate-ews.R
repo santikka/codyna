@@ -403,8 +403,6 @@ test_that("MAF metrics handle degenerate data with near-constant column", {
 
 test_that("AR metrics handle near-zero variance series", {
   set.seed(42)
-  # Data with low but non-zero variance to exercise the mews_ar_robust
-  # near-zero sd check (line 784-785) and try-error fallback (line 792)
   low_var_df <- data.frame(
     Time = seq_len(30),
     V1 = seq_len(30) + rnorm(30, sd = 0.001),

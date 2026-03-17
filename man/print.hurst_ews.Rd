@@ -19,4 +19,3 @@ A \code{hurst_ews} object as returned by \code{\link[=detect_hurst_warnings]{det
 Prints the underlying tibble of early warning signal results. Delegates
 to the default tibble print method.
 }
-\concept{hurst}

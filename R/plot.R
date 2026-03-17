@@ -1184,8 +1184,6 @@ build_warning_rects_ <- function(x) {
 #' @param ... Additional arguments (currently unused).
 #' @return A [ggplot2::ggplot()] or [patchwork::wrap_plots()] object.
 #' @seealso [detect_multivariate_warnings()] for computing the EWS.
-#' @family multivariate EWS
-#' @concept early warning signals
 #' @examples
 #' \donttest{
 #' tip <- generate_tipping_data(n_time = 100, n_vars = 3, tipping_point = 60)
@@ -1952,4 +1950,838 @@ plot_resilience_lines_ <- function(x, ...) {
     ggplot2::theme_minimal() +
     ggplot2::labs(x = "Time", y = "Value", color = "Metric") +
     ggplot2::theme(legend.position = "none")
+}
+
+#' Plot Sensitivity Analysis Results
+#'
+#' Visualizes how the Kendall tau trend statistic and metric trajectories
+#' vary across parameter combinations (window size and detrending method).
+#'
+#' @details
+#' Three plot types are available:
+#'
+#' **`type = "heatmap"`.** Displays a tile plot with window size on the
+#' y-axis and detrend method on the x-axis. Each tile is colored by the
+#' Kendall tau value using a diverging blue-white-red scale (blue =
+#' negative tau, white = zero, red = positive tau). Consistently red
+#' tiles across all combinations indicate a robust upward trend in the
+#' EWS metric, providing confidence that the signal is not an artifact
+#' of a specific parameter choice.
+#'
+#' **`type = "lines"`.** Faceted line plots showing the metric trajectory
+#' over time for each (window, detrend) combination. Panels are faceted
+#' by window size and detrend method, with free y-axes. This view reveals
+#' how the raw metric evolution differs across parameter settings and
+#' helps identify whether apparent trends are driven by specific window
+#' sizes or detrending choices.
+#'
+#' **`type = "both"`.** Stacks the heatmap on top and the line plots
+#' below using [patchwork::wrap_plots()], providing a complete overview
+#' in a single figure.
+#'
+#' @export
+#' @param x \[`sensitivity_ews`\]\cr
+#'   An object of class `sensitivity_ews` as returned by
+#'   [sensitivity_ews()].
+#' @param type \[`character(1)`: `"heatmap"`\]\cr
+#'   Plot type. The available options are:
+#'   * `"heatmap"`: Tile plot of Kendall tau across parameter
+#'     combinations.
+#'   * `"lines"`: Faceted line plots of metric trajectories.
+#'   * `"both"`: Both panels stacked vertically.
+#' @param ... Additional arguments (currently unused).
+#' @return A [ggplot2::ggplot()] object (or a
+#'   [patchwork::wrap_plots()] composite when `type = "both"`).
+#'
+#' @seealso [sensitivity_ews()] for computing the sensitivity analysis.
+#' @examples
+#' \donttest{
+#' set.seed(42)
+#' x <- cumsum(rnorm(300, sd = seq(0.5, 2, length.out = 300)))
+#' sa <- sensitivity_ews(x, metric = "ar1")
+#' plot(sa, type = "heatmap")
+#' plot(sa, type = "lines")
+#' plot(sa, type = "both")
+#' }
+plot.sensitivity_ews <- function(x, type = "heatmap", ...) {
+  check_missing(x)
+  check_class(x, "sensitivity_ews")
+  type <- check_match(type, c("heatmap", "lines", "both"))
+  metric_name <- attr(x, "metric") %||% "metric"
+  if (type == "heatmap" || type == "both") {
+    p_heat <- sensitivity_plot_heatmap_(x, metric_name)
+  }
+  if (type == "lines" || type == "both") {
+    p_lines <- sensitivity_plot_lines_(x, metric_name)
+  }
+  if (type == "heatmap") {
+    return(p_heat)
+  }
+  if (type == "lines") {
+    return(p_lines)
+  }
+  patchwork::wrap_plots(p_heat, p_lines, ncol = 1L, heights = c(1, 2))
+}
+
+sensitivity_plot_heatmap_ <- function(x, metric_name) {
+  # Extract one row per (window, detrend) combination
+  tau_df <- unique(x[, c("window", "detrend", "tau")])
+  tau_df <- dplyr::mutate(
+    tau_df,
+    window_label = factor(
+      !!rlang::sym("window"),
+      levels = sort(unique(!!rlang::sym("window")))
+    )
+  )
+  tau_range <- range(tau_df$tau, na.rm = TRUE)
+  abs_max <- max(abs(tau_range), na.rm = TRUE)
+  if (abs_max < 0.01) {
+    abs_max <- 1
+  }
+  ggplot2::ggplot(
+    tau_df,
+    ggplot2::aes(
+      x = !!rlang::sym("detrend"),
+      y = !!rlang::sym("window_label"),
+      fill = !!rlang::sym("tau")
+    )
+  ) +
+    ggplot2::geom_tile(color = "white", linewidth = 0.5) +
+    ggplot2::geom_text(
+      ggplot2::aes(label = sprintf("%.3f", !!rlang::sym("tau"))),
+      size = 3.5,
+      color = "black"
+    ) +
+    ggplot2::scale_fill_gradient2(
+      low = "#2166AC",
+      mid = "#F7F7F7",
+      high = "#B2182B",
+      midpoint = 0,
+      limits = c(-abs_max, abs_max),
+      name = "Kendall tau"
+    ) +
+    ggplot2::labs(
+      title = sprintf("Sensitivity of %s: Kendall tau", toupper(metric_name)),
+      x = "Detrend Method",
+      y = "Window Size"
+    ) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(size = 14, face = "bold"),
+      axis.title = ggplot2::element_text(color = "black", face = "bold"),
+      axis.text  = ggplot2::element_text(color = "black"),
+      panel.grid = ggplot2::element_blank()
+    )
+}
+
+sensitivity_plot_lines_ <- function(x, metric_name) {
+  plot_df <- dplyr::mutate(
+    x,
+    facet_label = sprintf(
+      "window = %d, detrend = %s",
+      !!rlang::sym("window"),
+      !!rlang::sym("detrend")
+    )
+  )
+  ggplot2::ggplot(
+    plot_df,
+    ggplot2::aes(
+      x = !!rlang::sym("time"),
+      y = !!rlang::sym("score")
+    )
+  ) +
+    ggplot2::geom_line(linewidth = 0.4, color = "#2166AC") +
+    ggplot2::facet_wrap(
+      ggplot2::vars(!!rlang::sym("facet_label")),
+      scales = "free_y"
+    ) +
+    ggplot2::labs(
+      title = sprintf("Rolling %s Across Parameter Combinations",
+                      toupper(metric_name)),
+      x     = "Time",
+      y     = metric_name
+    ) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(
+      plot.title      = ggplot2::element_text(size = 14, face = "bold"),
+      axis.title      = ggplot2::element_text(color = "black", face = "bold"),
+      axis.text       = ggplot2::element_text(color = "black"),
+      strip.text      = ggplot2::element_text(face = "bold", size = 8),
+      legend.position = "none"
+    )
+}
+
+#' Plot Spectral EWS Results
+#'
+#' Visualizes rolling spectral early warning signal results with
+#' state-coloured backgrounds and spectral exponent trajectories.
+#' Supports displaying the original time series, the spectral exponent
+#' with threshold bands, or both panels stacked.
+#'
+#' @details
+#' Three plot types are available:
+#'
+#' **`"series"`.**
+#' Draws the original time series as a line plot with the background
+#' shaded according to the noise-colour classification at each time
+#' point. The four states (`white_noise`, `pink_noise`, `red_noise`,
+#' `brownian`) are mapped to a fixed colour palette. This view answers:
+#' "What was the system doing when the spectral character changed?"
+#'
+#' **`"states"`.**
+#' Plots the rolling spectral exponent (beta) as a line, overlaid on
+#' horizontal bands at the classification thresholds (0.5, 1.5, 2.5).
+#' A dashed reference line at \eqn{\beta = 1.0} marks the boundary
+#' between white/pink and red noise. This view answers: "How did the
+#' spectral exponent evolve, and how close is it to regime boundaries?"
+#'
+#' **`"both"`** (default).
+#' Stacks the series panel on top and the states panel below using
+#' [patchwork::wrap_plots()], with shared time axes. The top panel
+#' suppresses its x-axis labels to avoid duplication.
+#'
+#' @export
+#' @param x \[`spectral`\]\cr
+#'   An object of class `spectral`.
+#' @param type \[`character(1)`: `"both"`\]\cr
+#'   Plot type. The available options are:
+#'   * `"series"`: Time series with state-coloured background.
+#'   * `"states"`: Spectral exponent trajectory with threshold bands.
+#'   * `"both"`: Both panels stacked vertically.
+#' @param ... Additional arguments (currently unused).
+#' @return A [ggplot2::ggplot()] object (or a
+#'   [patchwork::wrap_plots()] composite when `type = "both"`).
+#'
+#' @references
+#' Dakos, V., Scheffer, M., van Nes, E.H., Brovkin, V., Petoukhov, V.,
+#' & Held, H. (2008). Slowing down as an early warning signal for abrupt
+#' climate change. \emph{Proceedings of the National Academy of Sciences},
+#' 105(38), 14308--14312. \doi{10.1073/pnas.0802430105}
+#'
+#' @seealso [spectral_ews()] for computing the rolling spectral metrics.
+#' @examples
+#' \donttest{
+#' set.seed(42)
+#' x <- cumsum(rnorm(500))
+#' sp <- spectral_ews(x, window = 50L)
+#' plot(sp, type = "series")
+#' plot(sp, type = "states")
+#' plot(sp, type = "both")
+#' }
+plot.spectral <- function(x, type = "both", ...) {
+  check_missing(x)
+  check_class(x, "spectral")
+  type <- check_match(type, c("series", "states", "both"))
+
+  colors <- spectral_state_colors_()
+  all_states <- c("white_noise", "pink_noise", "red_noise", "brownian")
+
+  # Ensure state_f column for plotting
+  if ("state" %in% names(x)) {
+    d <- dplyr::mutate(
+      x,
+      state_f = factor(
+        !!rlang::sym("state"),
+        levels = all_states
+      )
+    )
+  } else {
+    # Derive states from spectral_exponent if not present
+    d <- dplyr::mutate(
+      x,
+      state_f = factor(
+        spectral_classify_(!!rlang::sym("spectral_exponent")),
+        levels = all_states
+      )
+    )
+  }
+
+  if (type == "series" || type == "both") {
+    rects <- spectral_build_rects_(d)
+    val <- d[["value"]]
+    val <- val[is.finite(val)]
+    y_rng <- range(val, na.rm = TRUE)
+    y_pad <- diff(y_rng) * 0.08
+    y_lo <- y_rng[1L] - y_pad
+    y_hi <- y_rng[2L] + y_pad
+    rects[["ymin"]] <- y_lo
+    rects[["ymax"]] <- y_hi
+
+    p_series <- ggplot2::ggplot(
+      d,
+      ggplot2::aes(x = !!rlang::sym("time"), y = !!rlang::sym("value"))
+    ) +
+      ggplot2::geom_rect(
+        data = rects,
+        ggplot2::aes(
+          xmin = !!rlang::sym("xmin"),
+          xmax = !!rlang::sym("xmax"),
+          ymin = !!rlang::sym("ymin"),
+          ymax = !!rlang::sym("ymax"),
+          fill = !!rlang::sym("state_f")
+        ),
+        alpha = 0.25,
+        inherit.aes = FALSE
+      ) +
+      ggplot2::geom_line(linewidth = 0.4) +
+      ggplot2::scale_fill_manual(
+        values = colors,
+        limits = all_states,
+        name = "Spectral State",
+        drop = FALSE
+      ) +
+      ggplot2::coord_cartesian(
+        ylim = c(y_lo, y_hi),
+        clip = "off"
+      ) +
+      ggplot2::theme_minimal() +
+      ggplot2::labs(x = NULL, y = "Value") +
+      ggplot2::theme(
+        legend.position = "bottom",
+        plot.margin = ggplot2::margin(t = 12, r = 5, b = 5, l = 5)
+      )
+    if (type == "series") return(p_series)
+  }
+
+  if (type == "states" || type == "both") {
+    beta_vals <- d[["spectral_exponent"]]
+    beta_vals <- beta_vals[is.finite(beta_vals)]
+    beta_max <- max(beta_vals, 3.0, na.rm = TRUE)
+    beta_min <- min(beta_vals, -0.5, na.rm = TRUE)
+    beta_top <- beta_max + 0.1
+    beta_bot <- beta_min - 0.1
+
+    p_states <- ggplot2::ggplot(
+      d,
+      ggplot2::aes(
+        x = !!rlang::sym("time"),
+        y = !!rlang::sym("spectral_exponent")
+      )
+    ) +
+      ggplot2::annotate(
+        "rect",
+        xmin = -Inf, xmax = Inf,
+        ymin = beta_bot, ymax = 0.5,
+        fill = colors["white_noise"], alpha = 0.15
+      ) +
+      ggplot2::annotate(
+        "rect",
+        xmin = -Inf, xmax = Inf,
+        ymin = 0.5, ymax = 1.5,
+        fill = colors["pink_noise"], alpha = 0.15
+      ) +
+      ggplot2::annotate(
+        "rect",
+        xmin = -Inf, xmax = Inf,
+        ymin = 1.5, ymax = 2.5,
+        fill = colors["red_noise"], alpha = 0.15
+      ) +
+      ggplot2::annotate(
+        "rect",
+        xmin = -Inf, xmax = Inf,
+        ymin = 2.5, ymax = beta_top,
+        fill = colors["brownian"], alpha = 0.15
+      ) +
+      ggplot2::geom_line(linewidth = 0.5) +
+      ggplot2::geom_hline(
+        yintercept = 1.0,
+        linetype = "dashed",
+        color = "grey40"
+      ) +
+      ggplot2::scale_y_continuous(
+        breaks = seq(
+          floor(beta_bot * 2) / 2,
+          ceiling(beta_top * 2) / 2,
+          0.5
+        )
+      ) +
+      ggplot2::coord_cartesian(
+        ylim = c(beta_bot, beta_top),
+        clip = "off"
+      ) +
+      ggplot2::theme_minimal() +
+      ggplot2::labs(x = "Time", y = "Spectral Exponent (beta)") +
+      ggplot2::theme(
+        plot.margin = ggplot2::margin(t = 8, r = 5, b = 5, l = 5)
+      )
+    if (type == "states") return(p_states)
+  }
+
+  # type == "both"
+  p_series <- p_series +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_blank(),
+      axis.ticks.x = ggplot2::element_blank()
+    )
+  patchwork::wrap_plots(p_series, p_states, ncol = 1L, heights = c(1, 1))
+}
+
+
+#' Classify spectral exponent into noise-colour states
+#'
+#' @param beta Numeric vector of spectral exponents.
+#' @return Character vector of state labels.
+#' @noRd
+spectral_classify_ <- function(beta) {
+  labels <- c("white_noise", "pink_noise", "red_noise", "brownian")
+  breaks <- c(-Inf, 0.5, 1.5, 2.5, Inf)
+  as.character(cut(beta, breaks = breaks, labels = labels, right = FALSE))
+}
+
+#' Colour palette for spectral noise states
+#' @noRd
+spectral_state_colors_ <- function() {
+  c(
+    white_noise = "#FFD93D",
+    pink_noise = "#FFA06B",
+    red_noise = "#FF6B6B",
+    brownian = "#9B59B6"
+  )
+}
+
+#' Build state-coloured rectangles for spectral plots
+#'
+#' @param d Tibble with `time` and `state_f` columns.
+#' @return A data.frame with `xmin`, `xmax`, `state_f` columns.
+#' @noRd
+spectral_build_rects_ <- function(d) {
+  n <- nrow(d)
+  if (n == 0L) {
+    return(data.frame(
+      xmin = numeric(0), xmax = numeric(0),
+      state_f = factor(character(0))
+    ))
+  }
+  states <- as.character(d$state_f)
+  time <- d$time
+  rle_states <- rle(states)
+  n_runs <- length(rle_states$lengths)
+  rects <- data.frame(
+    xmin = numeric(n_runs),
+    xmax = numeric(n_runs),
+    state_f = factor(
+      rle_states$values,
+      levels = c("white_noise", "pink_noise", "red_noise", "brownian")
+    )
+  )
+  pos <- 1L
+  for (i in seq_len(n_runs)) {
+    run_start <- pos
+    run_end <- pos + rle_states$lengths[i] - 1L
+    rects$xmin[i] <- time[run_start]
+    rects$xmax[i] <- time[run_end]
+    pos <- run_end + 1L
+  }
+  rects
+}
+
+#' Plot Surrogate Test Results
+#'
+#' Visualizes the surrogate significance test with a histogram of surrogate
+#' Kendall tau values, the observed metric trajectory with a surrogate
+#' envelope, or both panels stacked.
+#'
+#' @details
+#' Three plot types are available:
+#'
+#' **`"histogram"`.**
+#' Draws a histogram of Kendall's tau values from all surrogates, with a
+#' vertical dashed line marking the observed tau. The shaded region to the
+#' right of the observed value represents the p-value visually. This panel
+#' answers: "How extreme is the observed trend relative to the null
+#' distribution?"
+#'
+#' **`"envelope"`.**
+#' Plots the observed rolling metric trajectory (solid red line) overlaid
+#' on a shaded 95\% envelope (2.5th to 97.5th percentiles) computed from
+#' all surrogates. Points where the observed trajectory escapes the
+#' envelope signal time periods where the trend departs from the null.
+#' This panel answers: "When during the series does the metric deviate
+#' from what surrogates produce?"
+#'
+#' **`"both"` (default).**
+#' Stacks the histogram panel on top and the envelope panel below using
+#' [patchwork::wrap_plots()].
+#'
+#' @export
+#' @param x \[`surrogate_test`\]\cr
+#'   An object of class `surrogate_test` as returned by
+#'   [surrogate_test()].
+#' @param type \[`character(1)`: `"both"`\]\cr
+#'   Plot type. The available options are:
+#'   * `"histogram"`: Null distribution of surrogate taus with observed
+#'     value marked.
+#'   * `"envelope"`: Observed metric with 95\% surrogate envelope.
+#'   * `"both"`: Both panels stacked vertically.
+#' @param ... Additional arguments (currently unused).
+#' @return A [ggplot2::ggplot()] object (or a [patchwork::wrap_plots()]
+#'   composite when `type = "both"`).
+#'
+#' @seealso [surrogate_test()] for running the significance test.
+#' @examples
+#' \donttest{
+#' set.seed(42)
+#' x <- cumsum(rnorm(300))
+#' st <- surrogate_test(x, n_surrogates = 50L, metric = "ar1", window = 30L)
+#' plot(st, type = "histogram")
+#' plot(st, type = "envelope")
+#' plot(st, type = "both")
+#' }
+plot.surrogate_test <- function(x, type = "both", ...) {
+  check_missing(x)
+  check_class(x, "surrogate_test")
+  type <- check_match(type, c("histogram", "envelope", "both"))
+  colors <- surrogate_colors_()
+  metric_labels <- c(
+    ar1 = "AR(1)",
+    sd = "Std. Dev.",
+    skewness = "Skewness",
+    kurtosis = "Kurtosis",
+    spectral_exponent = "Spectral Exponent",
+    hurst = "Hurst Exponent"
+  )
+  metric_label <- metric_labels[x$metric]
+  if (type == "histogram" || type == "both") {
+    tau_df <- data.frame(tau = x$surrogate_taus[!is.na(x$surrogate_taus)])
+    obs_df <- data.frame(obs_tau = x$observed_tau)
+    p_hist <- ggplot2::ggplot(tau_df, ggplot2::aes(x = !!rlang::sym("tau"))) +
+      ggplot2::geom_histogram(
+        fill = colors["surrogates"],
+        color = "white",
+        bins = 30L,
+        alpha = 0.8
+      ) +
+      ggplot2::geom_vline(
+        data = obs_df,
+        ggplot2::aes(xintercept = !!rlang::sym("obs_tau")),
+        color = colors["observed"],
+        linewidth = 1.2,
+        linetype = "dashed"
+      ) +
+      ggplot2::annotate(
+        "label",
+        x = Inf,
+        y = Inf,
+        label = sprintf(
+          "tau = %.3f\n%s",
+          x$observed_tau,
+          surrogate_format_p_(x$p_value)
+        ),
+        hjust = 1.05,
+        vjust = 1.2,
+        color = colors["observed"],
+        fill = "white",
+        size = 3.8,
+        fontface = "bold"
+      ) +
+      ggplot2::labs(
+        title = sprintf(
+          "Surrogate Test: %s trend (%s method)",
+          metric_label,
+          x$method
+        ),
+        x = "Kendall's tau",
+        y = "Count"
+      ) +
+      ggplot2::theme_minimal() +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(size = 12, face = "bold")
+      )
+    if (type == "histogram") {
+      return(p_hist)
+    }
+  }
+  if (type == "envelope" || type == "both") {
+    n_windows <- length(x$observed_metric)
+    time_idx <- seq_len(n_windows)
+    surr_mat <- x$surrogate_metrics
+    lower_env <- apply(
+      surr_mat, 2L,
+      stats::quantile,
+      probs = 0.025,
+      na.rm = TRUE)
+    upper_env <- apply(
+      surr_mat,
+      2L,
+      stats::quantile,
+      probs = 0.975,
+      na.rm = TRUE
+    )
+    median_env <- apply(surr_mat, 2L, stats::median, na.rm = TRUE)
+    env_df <- data.frame(
+      time = time_idx,
+      observed = x$observed_metric,
+      lower = lower_env,
+      upper = upper_env,
+      median = median_env
+    )
+    p_env <- ggplot2::ggplot(env_df, ggplot2::aes(x = !!rlang::sym("time"))) +
+      ggplot2::geom_ribbon(
+        ggplot2::aes(
+          ymin = !!rlang::sym("lower"),
+          ymax = !!rlang::sym("upper")
+        ),
+        fill = colors["envelope"],
+        alpha = 0.5
+      ) +
+      ggplot2::geom_line(
+        ggplot2::aes(y = !!rlang::sym("median")),
+        color = colors["surrogates"],
+        linewidth = 0.5,
+        linetype = "dotted"
+      ) +
+      ggplot2::geom_line(
+        ggplot2::aes(y = !!rlang::sym("observed")),
+        color = colors["observed"],
+        linewidth = 0.8
+      ) +
+      ggplot2::labs(
+        title = sprintf(
+          "Rolling %s with 95%% surrogate envelope",
+          metric_label
+        ),
+        subtitle = sprintf(
+          "Window = %d | %s surrogates (%s method)",
+          x$window,
+          x$n_surrogates,
+          x$method
+        ),
+        x = "Window position",
+        y = metric_label
+      ) +
+      ggplot2::theme_minimal() +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(size = 12, face = "bold"),
+        plot.subtitle = ggplot2::element_text(size = 9, color = "grey40")
+      )
+    if (type == "envelope") {
+      return(p_env)
+    }
+  }
+  p_hist <- p_hist +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_blank(),
+      axis.ticks.x = ggplot2::element_blank(),
+      axis.title.x = ggplot2::element_blank()
+    )
+  patchwork::wrap_plots(p_hist, p_env, ncol = 1L, heights = c(1, 1.5))
+}
+
+#' Color palette for surrogate test plots
+#'
+#' @return Named character vector of colors.
+#' @noRd
+surrogate_colors_ <- function() {
+  c(
+    observed = "#E63946",
+    surrogates = "#457B9D",
+    envelope = "#A8DADC",
+    fill = "#1D3557"
+  )
+}
+
+#' Format a p-value for display, avoiding ugly 0.0000
+#'
+#' @param p Numeric p-value.
+#' @return Character string.
+#' @noRd
+surrogate_format_p_ <- function(p) {
+  if (is.na(p)) {
+    return("NA")
+  }
+  if (p < 0.001) {
+    return("p < 0.001")
+  }
+  sprintf("p = %.3f", p)
+}
+
+#' Plot Trend Classification Results
+#'
+#' Visualizes the time series with trend state classification, either as
+#' background-shaded regions or as a ribbon bar beneath the series.
+#'
+#' @details
+#' Two plot types are available:
+#'
+#' **`type = "series"` (default).** The time series is drawn with colored
+#' background tiles indicating the trend state at each time point. This
+#' provides an immediate overlay of direction and trajectory.
+#'
+#' **`type = "ribbons"`.** The time series is drawn in the upper portion,
+#' with a coloured ribbon bar below showing the trend state sequence. This
+#' matches the layout used by [plot.resilience()] and makes it easy to
+#' compare trend and resilience classifications side by side.
+#'
+#' @export
+#' @param x \[`trend`\]\cr
+#'   An object of class `trend` as returned by [compute_trend()].
+#' @param type \[`character(1)`: `"series"`\]\cr
+#'   Plot type: `"series"` for background shading, `"ribbons"` for a
+#'   ribbon bar beneath the time series.
+#' @param ... Additional arguments (currently unused).
+#' @return A [ggplot2::ggplot()] object.
+#'
+#' @seealso [compute_trend()] for computing trend classifications;
+#'   [plot.resilience()] for the analogous resilience ribbon plot.
+#' @family trend
+#' @concept time series
+#' @examples
+#' \donttest{
+#' set.seed(42)
+#' x <- cumsum(rnorm(200, sd = 2))
+#' tr <- compute_trend(x, window = 20)
+#' plot(tr)
+#' plot(tr, type = "ribbons")
+#' }
+plot.trend <- function(x, type = "series", ...) {
+  check_missing(x)
+  check_class(x, "trend")
+  type <- check_match(type, c("series", "ribbons"))
+  if (type == "series") {
+    plot_trend_series_(x, ...)
+  } else {
+    plot_trend_ribbons_(x, ...)
+  }
+}
+
+plot_trend_series_ <- function(x, ...) {
+  colors <- trend_state_colors_()
+  present <- levels(x$state)[levels(x$state) %in% unique(as.character(x$state))]
+  ggplot2::ggplot(
+    x,
+    ggplot2::aes(
+      x = !!rlang::sym("time"), y = !!rlang::sym("value")
+    )
+  ) +
+    ggplot2::geom_tile(
+      ggplot2::aes(
+        fill = !!rlang::sym("state"),
+        y = mean(range(!!rlang::sym("value"), na.rm = TRUE)),
+        height = diff(range(!!rlang::sym("value"), na.rm = TRUE)) * 1.1
+      ),
+      alpha = 0.35,
+      width = ifelse_(
+        nrow(x) > 1L,
+        stats::median(diff(x$time), na.rm = TRUE),
+        1
+      )
+    ) +
+    ggplot2::geom_line(linewidth = 0.6, color = "black") +
+    ggplot2::scale_fill_manual(
+      name = "Trend",
+      values = colors[present],
+      drop = FALSE
+    ) +
+    ggplot2::labs(
+      title = "Time Series Trend Classification",
+      x = "Time",
+      y = "Value"
+    ) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(
+      legend.position = "bottom",
+      plot.title = ggplot2::element_text(size = 14, face = "bold"),
+      axis.title = ggplot2::element_text(color = "black", face = "bold"),
+      axis.text = ggplot2::element_text(color = "black")
+    )
+}
+
+plot_trend_ribbons_ <- function(x, ...) {
+  colors <- trend_state_colors_()
+  state_levels <- c(
+    "ascending", "descending", "flat",
+    "turbulent", "Missing_Data", "Initial"
+  )
+  state_numeric <- match(as.character(x$state), state_levels)
+  time_vals <- x$time
+  ts_vals <- x$value
+  ts_range <- diff(range(ts_vals, na.rm = TRUE))
+  ts_min <- min(ts_vals, na.rm = TRUE)
+  ts_max <- max(ts_vals, na.rm = TRUE)
+  # Compress time series into upper portion
+  ts_compressed_range <- ts_range * 0.7
+  ts_new_max <- ts_max
+  ts_new_min <- ts_new_max - ts_compressed_range
+  # Ribbon sizing
+  ribbon_height  <- ts_range * 0.12
+  ribbon_y       <- ts_new_min - ts_range * 0.20
+  time_diff <- ifelse_(
+    length(time_vals) > 1L,
+    stats::median(diff(time_vals), na.rm = TRUE),
+    1
+  )
+  ts_df <- data.frame(time = time_vals, value = ts_vals)
+  tile_df <- data.frame(
+    x = time_vals,
+    y = ribbon_y,
+    state = x$state
+  )
+  t_min <- min(time_vals, na.rm = TRUE)
+  t_max <- max(time_vals, na.rm = TRUE)
+  y_bottom <- ribbon_y - ribbon_height
+  present <- state_levels[state_levels %in% unique(as.character(x$state))]
+  ggplot2::ggplot(
+    ts_df,
+    ggplot2::aes(
+      x = !!rlang::sym("time"), y = !!rlang::sym("value")
+    )
+  ) +
+    ggplot2::geom_line(color = "black", linewidth = 0.5) +
+    ggplot2::geom_tile(
+      data    = tile_df,
+      ggplot2::aes(
+        x = !!rlang::sym("x"),
+        y = !!rlang::sym("y"),
+        fill = !!rlang::sym("state")
+      ),
+      width = time_diff,
+      height = ribbon_height,
+      alpha = 0.85
+    ) +
+    ggplot2::annotate(
+      "text",
+      x = t_max + (t_max - t_min) / 50,
+      y = ribbon_y,
+      label = "TREND",
+      hjust = 0,
+      size = 3.5,
+      fontface = "bold",
+      color = "darkblue"
+    ) +
+    ggplot2::scale_fill_manual(
+      name = "Trend State",
+      values = colors[present],
+      drop = FALSE
+    ) +
+    ggplot2::coord_cartesian(
+      xlim = c(t_min, t_max + (t_max - t_min) / 6),
+      ylim = c(y_bottom, ts_new_max + ts_range * 0.1),
+      clip = "off"
+    ) +
+    ggplot2::labs(
+      title = "Time Series with Trend Ribbon",
+      x = "Time",
+      y = "Value"
+    ) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(
+      legend.position = "bottom",
+      plot.title = ggplot2::element_text(size = 14, face = "bold"),
+      axis.title = ggplot2::element_text(color = "black", face = "bold"),
+      axis.text = ggplot2::element_text(color = "black")
+    )
+}
+
+#' Trend state color palette
+#'
+#' @noRd
+trend_state_colors_ <- function() {
+  c(
+    ascending = "#4CAF50",
+    descending = "#F44336",
+    flat = "#FFC107",
+    turbulent = "#2196F3",
+    Missing_Data = "#CCCCCC",
+    Initial = "#FFFFFF"
+  )
 }
